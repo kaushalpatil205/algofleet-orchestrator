@@ -8,4 +8,11 @@ venv/
 .venv/
 .idea/
 .vscode/
-strategy-engine/Live/
+
+# Secrets and local configurations
+scripts/setup-secrets.sh
+engine.json
+*.pem
+*.key
+*.cert
+strategy-engine/
