@@ -1,0 +1,73 @@
+name: Live Execution Check
+
+# Gates merges to main. A strategy reaching main is one commit from being
+# deployed to the trading server, so this asks the question that matters there:
+# would it place orders, and would it survive a restart?
+#
+# It does NOT judge signal quality — indicators and setup detection are never
+# invoked. It covers the execution and lifecycle layer, which is where the
+# failures that need someone at 3am actually live.
+#
+# Nothing here touches the network, MT5, or CockroachDB: the probe stubs the
+# bridge and trade_db, and blocks socket outright so a missed stub fails loudly
+# instead of quietly reaching production from a CI runner.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  live-execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        # TA-Lib is stubbed by the probe rather than installed: it needs a C
+        # library built from source, and no indicator function is called here.
+        run: pip install --quiet pandas numpy pytest
+
+      - name: Probe every strategy
+        run: python -m pytest test/test_live_execution.py -v --no-header -p no:cacheprovider
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          cat <<'EOF'
+          A strategy under Live/ is not ready to run against a real account.
+
+          The checks, and what each one means:
+
+            PAPER_TRADING_ONLY is True
+              No order would ever reach MT5. The simulated fill is still written
+              to the live trades table as source='live', under a random ticket.
+
+            mt5_bridge_trade does not send the order to the bridge
+              Orders are being swallowed somewhere before the HTTP call.
+
+            a runner past 1:10 does not keep trailing
+              Ratio targets are precomputed to 1:10 only. Past that the ladder
+              has to be extrapolated from its own 1R step, or the stop freezes
+              two ratios back and an open winner hands the move back.
+
+            recover_open_trades() does not survive a populated database
+              The one that bites hardest. An empty database short-circuits this
+              path, so a first start always looks clean and the failure only
+              appears on the NEXT start, after the first trade — with a live
+              position open and nothing trailing it.
+
+            a still-open position does not resume trailing after a restart
+              A restart orphans open positions. Orders carry no take-profit, so
+              such a position runs to whatever stop was last written.
+
+          Reproduce a single strategy locally:
+
+            python test/live_execution_probe.py "Live/Strategy 17/Bridge-....py"
+          EOF

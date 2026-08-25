@@ -1,0 +1,13 @@
+{
+    "BOT_TOKEN": "8799287788:AAHS8MiKk5cNjJrfXYFzEaDrmYqpOTXSBuo",
+    "CHAT_ID": "-1003973537841",
+    "MT5_BRIDGE_URL": "https://exness-bridge-mt5.pickleballify.com/415891519/demo",
+    "MT5_API_KEY": "ak_9NfzYaoJnkY0ZxuBcQlnvURaFGxl1PvSR3hjeOrfrbQ",
+    "TRADE_DB_URL": "postgresql://floyd:4NOc9B_RfdRuvNiCoU3A4w@mt5-strategy-engine-30775.j77.aws-ap-south-1.cockroachlabs.cloud:26257/defaultdb?sslmode=require",
+    "MAGIC": 17101,
+    "FLATTEN_BEFORE_WEEKEND": true,
+    "FLATTEN_BEFORE_DAILY_BREAK": false,
+    "FLATTEN_LEAD_MIN": 10,
+    "TRAIL_INTERVAL_SEC": 10,
+    "RISK_PER_TRADE": 100
+}

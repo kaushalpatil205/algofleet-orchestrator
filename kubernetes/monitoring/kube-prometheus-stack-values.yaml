@@ -1,0 +1,19 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        memory: 400Mi
+      limits:
+        memory: 1Gi
+grafana:
+  enabled: true
+  adminPassword: "admin"
+  dashboards:
+    default:
+      kubernetes-pods:
+        # A standard dashboard for viewing pod memory/cpu
+        gnetId: 747
+        revision: 2
+        datasource: Prometheus

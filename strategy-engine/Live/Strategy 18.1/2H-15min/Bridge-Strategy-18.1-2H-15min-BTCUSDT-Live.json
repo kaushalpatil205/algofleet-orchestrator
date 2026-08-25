@@ -1,0 +1,14 @@
+{
+    "MT5_BRIDGE_URL": "https://exness-bridge-mt5.pickleballify.com/463858748/demo",
+    "MT5_API_KEY": "ak_XQ-XFf0vWcsDp5w3W4jWWKSZj8mTpPcKqMzn3sUI8_g",
+    "MAGIC": 18203,
+    "FLATTEN_BEFORE_WEEKEND": true,
+    "FLATTEN_BEFORE_DAILY_BREAK": false,
+    "FLATTEN_LEAD_MIN": 10,
+    "TRAIL_INTERVAL_SEC": 10,
+    "RISK_PER_TRADE": 1000,
+    "SAVE_FETCHED_DATA": false,
+    "STRATEGY_ID_SUFFIX": "-V2",
+    "ALLOW_DUPLICATE": true,
+    "MANAGED": true
+}

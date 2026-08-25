@@ -1,0 +1,62 @@
+{
+  "s17": [
+    {
+      "file": "s17_m3m2_v1_btcusd_sell",
+      "id": "S17-M3M2-V1-BTCUSDT-SELL",
+      "symbols": ["BTCUSD"],
+      "side": "sell",
+      "magic_shadow": 17201,
+      "strategy_script": "Live/Strategy 17/s17_m3m2_v1_btcusd_sell.py"
+    },
+    {
+      "file": "s17_m3m2_v1_xauusd_sell",
+      "id": "S17-M3M2-V1-XAUUSD-SELL",
+      "symbols": ["XAUUSD"],
+      "side": "sell",
+      "magic_shadow": 17202,
+      "strategy_script": "Live/Strategy 17/s17_m3m2_v1_xauusd_sell.py"
+    },
+    {
+      "file": "s17_m1m2_v4_btcusd_buy",
+      "id": "S17-M1M2-V4-BTCUSDT-BUY",
+      "symbols": ["BTCUSD"],
+      "side": "buy",
+      "magic_shadow": 17203,
+      "strategy_script": "Live/Strategy 17/s17_m1m2_v4_btcusd_buy.py"
+    },
+    {
+      "file": "s17_m2m3_v4_xauusd_buy",
+      "id": "S17-M2M3-V4-XAUUSD-BUY",
+      "symbols": ["XAUUSD"],
+      "side": "buy",
+      "magic_shadow": 17204,
+      "strategy_script": "Live/Strategy 17/s17_m2m3_v4_xauusd_buy.py"
+    },
+    {
+      "file": "s17_m2m3_v4_forex_buy",
+      "id": "S17-M2M3-V4-FOREX-BUY",
+      "symbols": ["USDJPY","EURUSD","USOIL"],
+      "side": "buy",
+      "magic_shadow": 17205,
+      "strategy_script": "Live/Strategy 17/s17_m2m3_v4_forex_buy.py"
+    },
+    {
+      "file": "s17_m1m2_v1_forex_sell",
+      "id": "S17-M1M2-V1-FOREX-SELL",
+      "symbols": ["USDJPY","EURUSD","USOIL"],
+      "side": "sell",
+      "magic_shadow": 17206,
+      "strategy_script": "Live/Strategy 17/s17_m1m2_v1_forex_sell.py"
+    }
+  ],
+  "s21": [
+    {
+      "file": "s21_btcusd",
+      "id": "S21-BTCUSD-LIVE",
+      "symbols": ["BTCUSD"],
+      "side": "both",
+      "magic_shadow": 21102,
+      "strategy_script": "Live/Strategy 21/s21_btcusd.py"
+    }
+  ]
+}

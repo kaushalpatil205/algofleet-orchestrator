@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trade-dashboard
+  namespace: trading
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trade-dashboard
+  template:
+    metadata:
+      labels:
+        app: trade-dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/trade-dashboard:latest
+        ports:
+        - containerPort: 8600
+        env:
+        - name: TRADE_DB_URL
+          valueFrom:
+            secretKeyRef:
+              name: engine-config
+              key: TRADE_DB_URL
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trade-dashboard-svc
+  namespace: trading
+spec:
+  selector:
+    app: trade-dashboard
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8600
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trade-dashboard-ingress
+  namespace: trading
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/certificate-arn: "YOUR_ACM_CERT_ARN" # For draxil.site
+spec:
+  ingressClassName: alb
+  rules:
+    - host: draxil.site
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: trade-dashboard-svc
+                port:
+                  number: 80
+

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: STRATEGY_NAME
+  namespace: trading
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: STRATEGY_NAME
+      component: strategy
+  template:
+    metadata:
+      labels:
+        app: STRATEGY_NAME
+        component: strategy
+    spec:
+      containers:
+      - name: strategy
+        image: ECR_REGISTRY/strategy-engine:latest
+        env:
+        - name: STRATEGY_SCRIPT
+          value: "STRATEGY_SCRIPT_VALUE"
+        - name: ENGINE_CONFIG_JSON
+          valueFrom:
+            secretKeyRef:
+              name: engine-config
+              key: json
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "[ \$(( \$(date +%s) - \$(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 180 ]"
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "test -f /tmp/heartbeat"]
+          initialDelaySeconds: 90
+          periodSeconds: 15
+

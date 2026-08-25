@@ -1,0 +1,91 @@
+pipeline {
+  agent { 
+    kubernetes {
+      yaml '
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: build
+            image: public.ecr.aws/docker/library/docker:24.0.5-dind
+            command: ["dockerd-entrypoint.sh"]
+            securityContext:
+              privileged: true
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command: ["cat"]
+            tty: true
+          - name: python
+            image: python:3.11-slim
+            command: ["cat"]
+            tty: true
+      '
+    }
+  }
+
+  environment {
+    AWS_REGION   = "ap-south-1"
+    CLUSTER_NAME = "tradops-eks"
+    IMAGE_TAG    = "${env.GIT_COMMIT[0..7]}"
+    # ECR_REGISTRY should be injected via Jenkins credentials or terraform output during bootstrap
+    ECR_REGISTRY = "YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com" 
+  }
+
+  stages {
+    stage("Checkout") {
+      steps {
+        checkout scm
+        sh "git submodule update --init --recursive"
+      }
+    }
+
+    stage("Generate K8s Manifests") {
+      steps {
+        container("python") {
+          sh "python scripts/gen_k8s_deployments.py"
+        }
+      }
+    }
+
+    stage("Build & Push Image") {
+      steps {
+        container("build") {
+          script {
+            sh "docker build -t ${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG} -t ${ECR_REGISTRY}/strategy-engine:latest -f docker/strategy-engine/Dockerfile ./strategy-engine"
+            sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+            sh "docker push ${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG}"
+            sh "docker push ${ECR_REGISTRY}/strategy-engine:latest"
+          }
+        }
+      }
+    }
+
+    stage("Deploy to EKS") {
+      steps {
+        container("kubectl") {
+          script {
+            sh "aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_REGION}"
+            sh """
+              for overlay in kubernetes/strategies/*/; do
+                if [ -f "\$overlay/deployment.yaml" ]; then
+                  # Optional Kustomize here, currently using direct YAML apply
+                  kubectl apply -f "\$overlay/deployment.yaml"
+                fi
+              done
+            """
+            sh "kubectl set image deployment -l component=strategy -n trading strategy=${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG}"
+            sh "kubectl rollout status deployment -l component=strategy -n trading --timeout=300s"
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      container("kubectl") {
+        sh "kubectl rollout undo deployment -l component=strategy -n trading"
+      }
+    }
+  }
+}
