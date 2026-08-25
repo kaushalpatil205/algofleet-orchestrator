@@ -27,15 +27,25 @@ pipeline {
     AWS_REGION   = "ap-south-1"
     CLUSTER_NAME = "tradops-eks"
     IMAGE_TAG    = "${env.GIT_COMMIT[0..7]}"
-    # ECR_REGISTRY should be injected via Jenkins credentials or terraform output during bootstrap
     ECR_REGISTRY = "YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com" 
   }
 
   stages {
-    stage("Checkout") {
+    stage("Checkout Public DevOps Repo") {
       steps {
         checkout scm
-        sh "git submodule update --init --recursive"
+      }
+    }
+
+    stage("Checkout Private Strategy Engine") {
+      steps {
+        // Jenkins securely pulls the proprietary algorithms from the private repo
+        // This keeps the trading IP completely hidden from the public DevOps portfolio
+        dir("strategy-engine") {
+            git branch: "main", 
+                credentialsId: "github-private-repo-token", 
+                url: "https://github.com/kaushalpatil205/strategy-engine.git"
+        }
       }
     }
 
@@ -51,7 +61,7 @@ pipeline {
       steps {
         container("build") {
           script {
-            sh "docker build -t ${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG} -t ${ECR_REGISTRY}/strategy-engine:latest -f docker/strategy-engine/Dockerfile ./strategy-engine"
+            sh "docker build -t ${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG} -t ${ECR_REGISTRY}/strategy-engine:latest -f docker/strategy-engine/Dockerfile ."
             sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
             sh "docker push ${ECR_REGISTRY}/strategy-engine:${IMAGE_TAG}"
             sh "docker push ${ECR_REGISTRY}/strategy-engine:latest"
@@ -68,7 +78,6 @@ pipeline {
             sh """
               for overlay in kubernetes/strategies/*/; do
                 if [ -f "\$overlay/deployment.yaml" ]; then
-                  # Optional Kustomize here, currently using direct YAML apply
                   kubectl apply -f "\$overlay/deployment.yaml"
                 fi
               done
