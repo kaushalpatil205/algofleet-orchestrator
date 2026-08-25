@@ -1,8 +1,0 @@
-{
-    "MAGIC": 17204,
-    "MT5_BRIDGE_URL": "https://exness-bridge-mt5.pickleballify.com/463858748/demo",
-    "MT5_API_KEY": "ak_XQ-XFf0vWcsDp5w3W4jWWKSZj8mTpPcKqMzn3sUI8_g",
-    "RISK_PER_TRADE": 100,
-    "STRATEGY_ID_SUFFIX": "-V2",
-    "ALLOW_DUPLICATE": true
-}

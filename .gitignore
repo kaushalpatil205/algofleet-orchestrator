@@ -8,3 +8,4 @@ venv/
 .venv/
 .idea/
 .vscode/
+strategy-engine/Live/
