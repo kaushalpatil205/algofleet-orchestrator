@@ -12,7 +12,7 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz \
     && cd ta-lib && ./configure --prefix=/usr && make && make install
 
 WORKDIR /app
-COPY requirements.txt .
+COPY strategy-engine/requirements.txt .
 # Install python dependencies including TA-Lib which compiles against the C library
 RUN pip install --no-cache-dir -r requirements.txt TA-Lib psycopg2-binary
 
