@@ -2,13 +2,15 @@
 FROM python:3.11-slim AS builder
 
 RUN apt-get update && apt-get install -y \
-    build-essential wget gcc make \
+    build-essential wget gcc make automake \
     && rm -rf /var/lib/apt/lists/*
 
 # Install TA-Lib C library from source
 WORKDIR /tmp
 RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz \
     && tar -xzf ta-lib-0.4.0-src.tar.gz \
+    && cp /usr/share/automake-*/config.guess ta-lib/ \
+    && cp /usr/share/automake-*/config.sub ta-lib/ \
     && cd ta-lib && ./configure --prefix=/usr && make && make install
 
 WORKDIR /app
@@ -37,4 +39,3 @@ ENV STRATEGY_SCRIPT=""
 ENV ENGINE_CONFIG_JSON=""
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-
