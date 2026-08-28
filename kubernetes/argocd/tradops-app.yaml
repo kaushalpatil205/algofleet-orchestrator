@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tradops-strategies
+  namespace: argocd
+  # Auto-delete child resources when this Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # WHERE to pull the manifests from (your public GitHub repo)
+  source:
+    repoURL: https://github.com/kaushalpatil205/tradops.git
+    targetRevision: main
+    path: kubernetes/strategies   # Only watch the strategies folder
+
+  # WHERE to deploy them (your EKS cluster)
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trading
+
+  # SYNC POLICY — fully automated GitOps
+  syncPolicy:
+    automated:
+      prune: true      # Delete pods that are removed from variants.json
+      selfHeal: true   # Re-apply if someone manually changes something in the cluster
+    syncOptions:
+      - CreateNamespace=true   # Auto-create trading namespace if missing
+      - PrunePropagationPolicy=foreground

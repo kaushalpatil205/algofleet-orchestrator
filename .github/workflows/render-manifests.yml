@@ -1,0 +1,46 @@
+name: Render K8s Manifests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'variants/variants.json'   # Only trigger when a strategy is added/changed
+
+permissions:
+  contents: write   # Needed to commit the generated YAMLs back to the repo
+
+jobs:
+  render-manifests:
+    name: Generate Kubernetes Deployment Manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tradops repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate Kubernetes manifests from variants.json
+        run: python3 scripts/gen_k8s_deployments.py
+
+      - name: Commit and push generated manifests
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kubernetes/strategies/
+          # Only commit if there are changes
+          git diff --cached --quiet || git commit -m "ci: Auto-render K8s manifests from variants.json [skip ci]"
+          git push
+
+      - name: Summary
+        run: |
+          echo "### ✅ Manifests Rendered" >> $GITHUB_STEP_SUMMARY
+          echo "ArgoCD will now pick up the changes and sync to EKS automatically." >> $GITHUB_STEP_SUMMARY
+          ls kubernetes/strategies/ | while read dir; do
+            echo "- \`$dir\`" >> $GITHUB_STEP_SUMMARY
+          done
