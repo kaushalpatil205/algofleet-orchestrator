@@ -49,6 +49,56 @@
       "strategy_script": "Live/Strategy 17/s17_m1m2_v1_forex_sell.py"
     }
   ],
+  "s18_1": [
+    {
+      "file": "s18-1-1h5min-btcusd",
+      "id": "S18.1-1H5MIN-BTCUSD",
+      "symbols": ["BTCUSD"],
+      "side": "both",
+      "magic_shadow": 18101,
+      "strategy_script": "Live/Strategy 18.1/1H-5min/Bridge-Strategy-18.1-1H-5min-BTCUSDT-Live.py"
+    },
+    {
+      "file": "s18-1-1h5min-xauusd",
+      "id": "S18.1-1H5MIN-XAUUSD",
+      "symbols": ["XAUUSD"],
+      "side": "both",
+      "magic_shadow": 18102,
+      "strategy_script": "Live/Strategy 18.1/1H-5min/Bridge-Strategy-18.1-1H-5min-XAUUSD-Live.py"
+    },
+    {
+      "file": "s18-1-2h15min-btcusd",
+      "id": "S18.1-2H15MIN-BTCUSD",
+      "symbols": ["BTCUSD"],
+      "side": "both",
+      "magic_shadow": 18103,
+      "strategy_script": "Live/Strategy 18.1/2H-15min/Bridge-Strategy-18.1-2H-15min-BTCUSDT-Live.py"
+    },
+    {
+      "file": "s18-1-2h15min-xauusd",
+      "id": "S18.1-2H15MIN-XAUUSD",
+      "symbols": ["XAUUSD"],
+      "side": "both",
+      "magic_shadow": 18104,
+      "strategy_script": "Live/Strategy 18.1/2H-15min/Bridge-Strategy-18.1-2H-15min-XAUUSD-Live.py"
+    },
+    {
+      "file": "s18-1-4h15min-btcusd",
+      "id": "S18.1-4H15MIN-BTCUSD",
+      "symbols": ["BTCUSD"],
+      "side": "both",
+      "magic_shadow": 18105,
+      "strategy_script": "Live/Strategy 18.1/4H-15min/Bridge-Strategy-18.1-4H-15min-BTCUSDT-Live.py"
+    },
+    {
+      "file": "s18-1-4h15min-xauusd",
+      "id": "S18.1-4H15MIN-XAUUSD",
+      "symbols": ["XAUUSD"],
+      "side": "both",
+      "magic_shadow": 18106,
+      "strategy_script": "Live/Strategy 18.1/4H-15min/Bridge-Strategy-18.1-4H-15min-XAUUSD-Live.py"
+    }
+  ],
   "s21": [
     {
       "file": "s21_btcusd",
