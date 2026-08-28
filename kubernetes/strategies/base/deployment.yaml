@@ -38,7 +38,7 @@ spec:
             command:
             - /bin/sh
             - -c
-            - "[ \$(( \$(date +%s) - \$(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 180 ]"
+            - "[ $(( $(date +%s) - $(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 180 ]"
           initialDelaySeconds: 120
           periodSeconds: 30
           failureThreshold: 3
