@@ -1,8 +1,10 @@
 import json
 import os
+import subprocess
 
 VARIANTS_PATH = "variants/variants.json"
 BASE_YAML_PATH = "kubernetes/strategies/base/deployment.yaml"
+ECR_REGISTRY = "561789488706.dkr.ecr.ap-south-1.amazonaws.com"
 
 def generate():
     with open(VARIANTS_PATH, "r") as f:
@@ -20,7 +22,8 @@ def generate():
             yaml = base_yaml \
                 .replace("STRATEGY_NAME", name) \
                 .replace("STRATEGY_SCRIPT_VALUE", v["strategy_script"]) \
-                .replace("MAGIC_VALUE", str(v["magic_shadow"]))
+                .replace("MAGIC_VALUE", str(v["magic_shadow"])) \
+                .replace("ECR_REGISTRY", ECR_REGISTRY)
 
             with open(f"{out_dir}/deployment.yaml", "w") as f:
                 f.write(yaml)
