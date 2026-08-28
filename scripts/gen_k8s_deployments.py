@@ -3,7 +3,7 @@ import os
 import subprocess
 
 VARIANTS_PATH = "variants/variants.json"
-BASE_YAML_PATH = "kubernetes/strategies/base/deployment.yaml"
+BASE_YAML_PATH = "kubernetes/templates/strategy-deployment.yaml"
 ECR_REGISTRY = "561789488706.dkr.ecr.ap-south-1.amazonaws.com"
 
 def generate():
