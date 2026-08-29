@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: trade-dashboard
   namespace: trading
+  labels:
+    app: trade-dashboard
 spec:
   replicas: 1
   selector:
@@ -14,58 +16,38 @@ spec:
         app: trade-dashboard
     spec:
       containers:
-      - name: dashboard
-        image: YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/trade-dashboard:latest
-        ports:
-        - containerPort: 8600
-        env:
-        - name: TRADE_DB_URL
-          valueFrom:
-            secretKeyRef:
-              name: engine-config
-              key: TRADE_DB_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
+        - name: dashboard
+          image: 561789488706.dkr.ecr.ap-south-1.amazonaws.com/trade-dashboard:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dashboard-secrets
+                  key: database-url
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
 ---
 apiVersion: v1
-kind: Service
+kind: Secret
 metadata:
-  name: trade-dashboard-svc
+  name: dashboard-secrets
   namespace: trading
-spec:
-  selector:
-    app: trade-dashboard
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8600
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: trade-dashboard-ingress
-  namespace: trading
-  annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
-    alb.ingress.kubernetes.io/certificate-arn: "YOUR_ACM_CERT_ARN" # For draxil.site
-spec:
-  ingressClassName: alb
-  rules:
-    - host: draxil.site
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: trade-dashboard-svc
-                port:
-                  number: 80
-
+type: Opaque
+stringData:
+  # In a strict production environment, this would be an ExternalSecret syncing from AWS Secrets Manager.
+  # For this portfolio deployment, we store it as a native K8s secret directly.
+  database-url: "postgresql://floyd:4NOc9B_RfdRuvNiCoU3A4w@mt5-strategy-engine-30775.j77.aws-ap-south-1.cockroachlabs.cloud:26257/defaultdb?sslmode=require"
