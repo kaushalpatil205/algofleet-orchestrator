@@ -79,12 +79,48 @@ module "karpenter" {
 
   cluster_name = module.eks.cluster_name
 
-  # Attach required policies for Karpenter to launch EC2 nodes
   enable_irsa            = true
   irsa_oidc_provider_arn = module.eks.oidc_provider_arn
   
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
+}
+
+# ---------------------------------------------------------
+# External Secrets Operator IRSA (Access to Secrets Manager)
+# ---------------------------------------------------------
+module "external_secrets_irsa_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name                             = "tradops-external-secrets"
+  attach_external_secrets_policy        = true
+  external_secrets_secrets_manager_arns = [aws_secretsmanager_secret.engine_config.arn]
+
+  oidc_providers = {
+    ex = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["external-secrets:external-secrets"]
+    }
+  }
+}
+
+# ---------------------------------------------------------
+# AWS Load Balancer Controller IRSA
+# ---------------------------------------------------------
+module "load_balancer_controller_irsa_role" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name                              = "tradops-alb-controller"
+  attach_load_balancer_controller_policy = true
+
+  oidc_providers = {
+    ex = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:aws-load-balancer-controller"]
+    }
   }
 }
 
