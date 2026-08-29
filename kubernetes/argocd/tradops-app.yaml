@@ -14,6 +14,8 @@ spec:
     repoURL: https://github.com/kaushalpatil205/tradops.git
     targetRevision: main
     path: kubernetes/strategies   # Only watch the strategies folder
+    directory:
+      recurse: true               # Look inside subdirectories (s17-m3m2-v1-btcusd-sell/, etc.)
 
   # WHERE to deploy them (your EKS cluster)
   destination:
