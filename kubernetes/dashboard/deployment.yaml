@@ -50,4 +50,4 @@ type: Opaque
 stringData:
   # In a strict production environment, this would be an ExternalSecret syncing from AWS Secrets Manager.
   # For this portfolio deployment, we store it as a native K8s secret directly.
-  database-url: "postgresql://floyd:4NOc9B_RfdRuvNiCoU3A4w@mt5-strategy-engine-30775.j77.aws-ap-south-1.cockroachlabs.cloud:26257/defaultdb?sslmode=require"
+  database-url: "postgresql://tradops:supersecretpassword@postgres.trading.svc.cluster.local:5432/tradops"
