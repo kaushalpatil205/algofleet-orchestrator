@@ -25,7 +25,7 @@ pipeline {
 
   environment {
     AWS_REGION   = "ap-south-1"
-    CLUSTER_NAME = "tradops-eks"
+    CLUSTER_NAME = "algofleet-eks"
     IMAGE_TAG    = "${env.GIT_COMMIT[0..7]}"
     ECR_REGISTRY = "YOUR_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com" 
   }

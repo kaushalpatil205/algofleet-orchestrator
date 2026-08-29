@@ -7,7 +7,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 
-  name = "tradops-vpc"
+  name = "algofleet-vpc"
   cidr = "10.0.0.0/16"
 
   azs             = ["ap-south-1a", "ap-south-1b"]
@@ -22,7 +22,7 @@ module "vpc" {
   }
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
-    "karpenter.sh/discovery"          = "tradops-eks"
+    "karpenter.sh/discovery"          = "algofleet-eks"
   }
 }
 
@@ -31,7 +31,7 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
 
-  cluster_name    = "tradops-eks"
+  cluster_name    = "algofleet-eks"
   cluster_version = "1.34"
 
   vpc_id                   = module.vpc.vpc_id
@@ -51,7 +51,7 @@ module "eks" {
   enable_cluster_creator_admin_permissions = true
 
   eks_managed_node_groups = {
-    tradops_nodes = {
+    algofleet_nodes = {
       instance_types = ["t3.medium"]
       min_size       = 2
       max_size       = 6
@@ -66,7 +66,7 @@ module "eks" {
 
   # Tag the subnets and cluster so Karpenter knows where to provision nodes
   tags = {
-    "karpenter.sh/discovery" = "tradops-eks"
+    "karpenter.sh/discovery" = "algofleet-eks"
   }
 }
 
@@ -94,7 +94,7 @@ module "external_secrets_irsa_role" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
-  role_name                             = "tradops-external-secrets"
+  role_name                             = "algofleet-external-secrets"
   attach_external_secrets_policy        = true
   external_secrets_secrets_manager_arns = [aws_secretsmanager_secret.engine_config.arn]
 
@@ -113,7 +113,7 @@ module "load_balancer_controller_irsa_role" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
-  role_name                              = "tradops-alb-controller"
+  role_name                              = "algofleet-alb-controller"
   attach_load_balancer_controller_policy = true
 
   oidc_providers = {
@@ -147,7 +147,7 @@ resource "aws_ecr_repository" "trade_dashboard" {
 
 # 4. Secrets Manager
 resource "aws_secretsmanager_secret" "engine_config" {
-  name = "tradops/engine-config"
+  name = "algofleet/engine-config"
 }
 
 # 5. GitHub Actions OIDC — Secure CI/CD without long-lived AWS keys
@@ -186,7 +186,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "tradops-github-actions"
+  name               = "algofleet-github-actions"
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
 }
 

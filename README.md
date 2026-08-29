@@ -2,7 +2,7 @@
 
 **AlgoFleet Orchestrator** is an enterprise-grade, cloud-native algorithmic trading platform. It leverages Kubernetes, GitOps, and AWS to orchestrate, monitor, and deploy algorithmic trading strategies (MT5 bots) at scale. 
 
-This project demonstrates Senior Platform Engineering architecture, focusing on High Availability (HA), automated CI/CD pipelines, Infrastructure as Code (IaC), and seamless autoscaling.
+This project demonstrates Platform Engineering architecture, focusing on High Availability (HA), automated CI/CD pipelines, Infrastructure as Code (IaC), and seamless autoscaling.
 
 ---
 
@@ -58,7 +58,7 @@ flowchart TB
             end
             
             subgraph Private [Private Subnets]
-                subgraph EKS [EKS Cluster: tradops-eks]
+                subgraph EKS [EKS Cluster: algofleet-eks]
                     subgraph NS_Argo [Namespace: argocd]
                         ArgoCD[ArgoCD Controller]
                     end
@@ -135,13 +135,13 @@ terraform apply -auto-approve
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl apply -f kubernetes/argocd/tradops-app.yaml
+kubectl apply -f kubernetes/argocd/algofleet-app.yaml
 ```
 
 ### 3. Complete Teardown (Zero-Cost Reset)
 ```bash
 kubectl delete namespace trading argocd --ignore-not-found=true
-aws secretsmanager delete-secret --secret-id tradops/engine-config --force-delete-without-recovery --region ap-south-1
+aws secretsmanager delete-secret --secret-id algofleet/engine-config --force-delete-without-recovery --region ap-south-1
 cd terraform
 terraform destroy -auto-approve
 ```

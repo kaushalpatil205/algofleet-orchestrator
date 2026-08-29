@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: tradops-strategies
+  name: algofleet-strategies
   namespace: argocd
   # Auto-delete child resources when this Application is deleted
   finalizers:

@@ -30,7 +30,7 @@ WORKDIR /app
 # Copy the entire strategy engine repository
 COPY strategy-engine/ /app/
 # Copy our custom entrypoint
-COPY tradops/docker/strategy-engine/entrypoint.sh /app/entrypoint.sh
+COPY algofleet/docker/strategy-engine/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # STRATEGY_SCRIPT is injected per-pod (e.g. "Live/Strategy 17/s17_m3m2_v1_btcusd_sell.py")

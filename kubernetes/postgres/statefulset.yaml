@@ -30,11 +30,11 @@ spec:
           image: postgres:15-alpine
           env:
             - name: POSTGRES_USER
-              value: tradops
+              value: algofleet
             - name: POSTGRES_PASSWORD
               value: supersecretpassword
             - name: POSTGRES_DB
-              value: tradops
+              value: algofleet
           ports:
             - containerPort: 5432
           volumeMounts:
