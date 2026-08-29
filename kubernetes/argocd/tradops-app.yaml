@@ -11,7 +11,7 @@ spec:
 
   # WHERE to pull the manifests from (your public GitHub repo)
   source:
-    repoURL: https://github.com/kaushalpatil205/tradops.git
+    repoURL: https://github.com/kaushalpatil205/algofleet-orchestrator.git
     targetRevision: main
     path: kubernetes             # Watch the entire kubernetes folder (strategies + dashboard)
     directory:
