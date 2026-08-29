@@ -9,6 +9,7 @@ This project is built using modern Platform Engineering and DevOps practices.
 ### AWS Infrastructure (Provisioned via Terraform)
 * **VPC & Networking:** A custom Virtual Private Cloud with public and private subnets, ensuring database and trading pods are securely isolated from the public internet.
 * **Amazon EKS (Elastic Kubernetes Service):** The core container orchestration platform. It manages the lifecycle, scaling, and self-healing of the trading bots.
+* **Karpenter (Node Autoscaler):** High-performance, just-in-time node provisioning. Automatically spins up right-sized EC2 instances in seconds if the cluster needs more capacity, keeping costs strictly optimized.
 * **Amazon ECR (Elastic Container Registry):** Securely stores the Docker images for the Strategy Engines and the Dashboard.
 * **IAM OIDC Identity Provider:** Allows GitHub Actions to securely authenticate with AWS to build and push Docker images *without* storing long-lived IAM access keys.
 
