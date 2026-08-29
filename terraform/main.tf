@@ -128,6 +128,7 @@ module "load_balancer_controller_irsa_role" {
 resource "aws_ecr_repository" "strategy_engine" {
   name                 = "strategy-engine"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -137,6 +138,7 @@ resource "aws_ecr_repository" "strategy_engine" {
 resource "aws_ecr_repository" "trade_dashboard" {
   name                 = "trade-dashboard"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
