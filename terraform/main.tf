@@ -22,6 +22,7 @@ module "vpc" {
   }
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
+    "karpenter.sh/discovery"          = "tradops-eks"
   }
 }
 
@@ -39,13 +40,51 @@ module "eks" {
 
   cluster_endpoint_public_access = true
 
+  # Enable the AWS EBS CSI Driver Add-on for PostgreSQL persistent storage
+  cluster_addons = {
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
+
+  # Automatically grants full admin access to whoever ran terraform apply (your SSO session)
+  enable_cluster_creator_admin_permissions = true
+
   eks_managed_node_groups = {
     tradops_nodes = {
       instance_types = ["t3.medium"]
       min_size       = 2
       max_size       = 6
       desired_size   = 2
+
+      # Give the nodes permission to create and attach EBS volumes for PostgreSQL
+      iam_role_additional_policies = {
+        ebs_csi = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
     }
+  }
+
+  # Tag the subnets and cluster so Karpenter knows where to provision nodes
+  tags = {
+    "karpenter.sh/discovery" = "tradops-eks"
+  }
+}
+
+# ---------------------------------------------------------
+# Karpenter Infrastructure (IAM Roles & Profiles)
+# ---------------------------------------------------------
+module "karpenter" {
+  source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+  version = "~> 20.0"
+
+  cluster_name = module.eks.cluster_name
+
+  # Attach required policies for Karpenter to launch EC2 nodes
+  enable_irsa            = true
+  irsa_oidc_provider_arn = module.eks.oidc_provider_arn
+  
+  node_iam_role_additional_policies = {
+    AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   }
 }
 
@@ -79,8 +118,13 @@ data "aws_caller_identity" "current" {}
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  # GitHub's old and new CA thumbprints
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd", "1b511abead59c6ce207077c0bf0e0043b1382612"]
+  # Updated thumbprints — current cert + known fallbacks
+  thumbprint_list = [
+    "227203b5317f3818cab5b5ce596132bf36748c0e",
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+    "1b511abead59c6ce207077c0bf0e0043b1382612"
+  ]
 }
 
 data "aws_iam_policy_document" "github_actions_assume_role" {
@@ -98,10 +142,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [
-        "repo:kaushalpatil205/strategy-engine:*",
-        "repo:kaushalpatil205/tradops:*"
-      ]
+      values   = ["repo:kaushalpatil205/*"]
     }
   }
 }
