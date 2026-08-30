@@ -19,6 +19,9 @@ spec:
       - name: strategy
         image: 561789488706.dkr.ecr.ap-south-1.amazonaws.com/strategy-engine:latest
         env:
+        - name: TRADE_DB_URL
+          value: "postgresql://algofleet:supersecretpassword@postgres.trading.svc.cluster.local:5432/algofleet"
+
         - name: STRATEGY_SCRIPT
           value: "Live/Strategy 18.1/1H-5min/Bridge-Strategy-18.1-1H-5min-XAUUSD-Live.py"
         - name: ENGINE_CONFIG_JSON
