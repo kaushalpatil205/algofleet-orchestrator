@@ -1,172 +1,733 @@
 # 🚀 AlgoFleet Orchestrator
 
-![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white) ![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white) ![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=for-the-badge&logo=terraform&logoColor=white) ![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=for-the-badge&logo=kubernetes&logoColor=white)
+![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=for-the-badge&logo=terraform&logoColor=white)
+![ArgoCD](https://img.shields.io/badge/Argo%20CD-1e0b3e?style=for-the-badge&logo=argo&logoColor=#d16044)
+![GitHub Actions](https://img.shields.io/badge/github%20actions-%232671E5.svg?style=for-the-badge&logo=githubactions&logoColor=white)
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
+![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
 
-## Executive Summary
+> **Production-grade algorithmic trading platform** — 13 live trading bots running as Kubernetes microservices on AWS EKS, placing real trades on MetaTrader 5 (MT5) with full GitOps automation, secrets management, observability, and zero manual deployments.
 
-AlgoFleet Orchestrator is a production-grade algorithmic trading platform running on AWS EKS. It orchestrates 13 trading bots as Kubernetes microservices, placing live trades on MetaTrader 5 (MT5) via an MT5 bridge URL. This project showcases advanced DevOps practices including Infrastructure as Code (Terraform), GitOps (ArgoCD), secret management (External Secrets Operator), and automated CI/CD pipelines (GitHub Actions).
+---
 
-## Architecture
+## 📋 Table of Contents
+
+- [Executive Summary](#-executive-summary)
+- [Architecture Diagram](#-architecture-diagram)
+- [Architecture — In-Depth Explanation](#-architecture--in-depth-explanation)
+  - [Layer 1: Infrastructure (Terraform + AWS)](#layer-1-infrastructure-terraform--aws)
+  - [Layer 2: Container Runtime (EKS + ECR + Docker)](#layer-2-container-runtime-eks--ecr--docker)
+  - [Layer 3: Cluster Addons](#layer-3-cluster-addons)
+  - [Layer 4: Workloads (Trading Namespace)](#layer-4-workloads-trading-namespace)
+  - [Layer 5: Observability (Monitoring Namespace)](#layer-5-observability-monitoring-namespace)
+  - [Layer 6: GitOps and CI/CD](#layer-6-gitops-and-cicd)
+- [End-to-End Data Flow — How a Trade Happens](#-end-to-end-data-flow--how-a-trade-happens)
+- [Project Directory Structure](#-project-directory-structure)
+- [Strategy Bots — Complete List](#-strategy-bots--complete-list)
+- [Tech Stack Table](#-tech-stack-table)
+- [Prerequisites](#-prerequisites)
+- [Step-by-Step Setup Guide](#-step-by-step-setup-guide)
+- [How to Deploy a New Strategy](#-how-to-deploy-a-new-strategy)
+- [Accessing Services](#-accessing-services)
+- [Secrets Management Deep Dive](#-secrets-management-deep-dive)
+- [Teardown Guide](#-teardown-guide)
+
+---
+
+## 🎯 Executive Summary
+
+AlgoFleet Orchestrator is a **fully automated, cloud-native algorithmic trading platform** built to demonstrate production-level DevOps engineering. It runs **13 independent trading strategy bots** as Kubernetes pods on AWS EKS. Each bot implements a different trading strategy (Strategy 17, 18.1, 21) across multiple financial instruments (BTCUSD, XAUUSD, EURUSD, USDJPY, USOIL, Forex).
+
+Every bot connects to a **MetaTrader 5 bridge API** to place real trades, reads market signals using Python algorithms, records every trade in an internal **PostgreSQL database**, and is monitored via a **Grafana/Prometheus observability stack**.
+
+The entire platform is managed using **GitOps principles** — the Git repository is the single source of truth. Push to `main` → GitHub Actions generates deployment manifests → ArgoCD syncs them to the cluster. No manual `kubectl apply` ever needed in production.
+
+---
+
+## 🏗️ Architecture Diagram
 
 ```mermaid
-graph TD
-    subgraph AWS Cloud
-        subgraph EKS Cluster
-            subgraph Namespace: trading
-                Bots[13 Strategy Bots]
-                PG[(PostgreSQL)]
-                ES[External Secret]
-                TD[Trade Dashboard]
+flowchart TD
+    DEV["fa:fa-user Developer\nLocal Machine"]
+
+    subgraph GITHUB["GitHub"]
+        REPO["fa:fa-box algofleet-orchestrator\nGit Repository"]
+        GHA["fa:fa-cog GitHub Actions\nCI/CD Pipeline"]
+    end
+
+    subgraph AWS["AWS Cloud — Region: ap-south-1"]
+        S3["fa:fa-database S3 Bucket\nTerraform State Backend"]
+        SM["fa:fa-lock Secrets Manager\nalgofleet/engine-config"]
+        ECR1["fa:fa-box ECR: strategy-engine\nDocker Image"]
+        ECR2["fa:fa-box ECR: trade-dashboard\nDocker Image"]
+
+        subgraph VPC["VPC — algofleet-vpc  10.0.0.0/16"]
+            NAT["NAT Gateway\nOutbound Internet for Private Nodes"]
+
+            subgraph PUB["Public Subnets — 10.0.101.0/24  10.0.102.0/24"]
+                NLB1["NLB: Trade Dashboard\nPort 80 to 8000"]
+                NLB2["NLB: Grafana\nPort 80 to 3000"]
             end
-            
-            subgraph Namespace: monitoring
-                Grafana[Grafana]
-                Prom[Prometheus]
-            end
-            
-            subgraph Namespace: argocd
-                Argo[ArgoCD]
-            end
-            
-            subgraph Addons
-                LBC[AWS Load Balancer Controller]
-                ESO[External Secrets Operator]
+
+            subgraph PRIV["Private Subnets — 10.0.1.0/24  10.0.2.0/24"]
+                subgraph EKS["EKS Cluster — algofleet-eks  v1.34"]
+                    subgraph NODES["Managed Node Group — 4x t3.medium  min=2 max=6"]
+
+                        subgraph NS_ARGOCD["Namespace: argocd"]
+                            ARGO["ArgoCD\nGitOps Controller"]
+                        end
+
+                        subgraph NS_ADDONS["Namespace: kube-system and external-secrets"]
+                            LBC["AWS Load Balancer Controller v1.7.1"]
+                            ESO["External Secrets Operator v0.9.11"]
+                            EBS_CSI["EBS CSI Driver"]
+                            GP3["gp3 StorageClass"]
+                        end
+
+                        subgraph NS_TRADING["Namespace: trading"]
+                            BOTS["13 Strategy Bot Pods\ns17 s18 s21 series"]
+                            PG["PostgreSQL 15\nStatefulSet\n5Gi gp3 EBS Volume"]
+                            DASH["Trade Dashboard\nFastAPI"]
+                            K8S_SEC["K8s Secret: engine-config\nCreated by ESO"]
+                        end
+
+                        subgraph NS_MON["Namespace: monitoring"]
+                            PROM["Prometheus\nMetrics + TSDB"]
+                            GRAF["Grafana\nDashboards"]
+                        end
+                    end
+                end
             end
         end
-        
-        SM[AWS Secrets Manager]
-        ECR[Amazon ECR]
-        S3[S3 Terraform Backend]
-        NLB1[NLB - Dashboard]
-        NLB2[NLB - Grafana]
     end
-    
-    GH[GitHub Actions]
-    MT5[MT5 Bridge API]
-    
-    GH -->|Pushes Images| ECR
-    GH -->|Updates Git| Argo
-    Argo -->|Syncs YAML| EKS Cluster
-    ESO -->|Syncs| SM
-    ES -.->|Populates| Bots
-    Bots -->|Reads/Writes| PG
-    Bots -->|Sends Trades| MT5
-    TD -.->|Query Status| Bots
-    NLB1 --> TD
-    NLB2 --> Grafana
+
+    MT5["MT5 Bridge API\nexness-bridge-mt5\nAccount: 277746877"]
+
+    DEV -->|"git push"| REPO
+    REPO -->|"on variants.json change"| GHA
+    GHA -->|"docker build and push"| ECR1
+    GHA -->|"generate manifests and commit"| REPO
+    REPO -->|"ArgoCD polls every 3min"| ARGO
+    ARGO -->|"kubectl apply"| NS_TRADING
+    ARGO -->|"helm install"| NS_ADDONS
+    ARGO -->|"helm install"| NS_MON
+    ESO -->|"GetSecretValue every 1h via IRSA"| SM
+    SM -->|"secret value"| K8S_SEC
+    K8S_SEC -->|"ENGINE_CONFIG_JSON env var"| BOTS
+    BOTS -->|"pull image on startup"| ECR1
+    BOTS -->|"read and write trades"| PG
+    BOTS -->|"POST place-trade"| MT5
+    NLB1 -->|"route"| DASH
+    NLB2 -->|"route"| GRAF
+    LBC -->|"provision and manage"| NLB1
+    LBC -->|"provision and manage"| NLB2
+    EBS_CSI -->|"provision 5Gi volume"| PG
+    PROM -->|"scrape metrics"| BOTS
+    GRAF -->|"query"| PROM
+    NAT -->|"outbound internet"| MT5
 ```
 
-## Table of Contents
+---
 
-- [Executive Summary](#executive-summary)
-- [Architecture](#architecture)
-- [Major Components](#major-components)
-- [End-to-End Data Flow](#end-to-end-data-flow)
-- [Prerequisites](#prerequisites)
-- [Setup Guide](#setup-guide)
-- [Deploying a New Strategy](#deploying-a-new-strategy)
-- [Accessing Services](#accessing-services)
-- [Secrets Management](#secrets-management)
-- [GitOps with ArgoCD](#gitops-with-argocd)
-- [Project Directory Structure](#project-directory-structure)
-- [Teardown](#teardown)
-- [Tech Stack](#tech-stack)
+## 🔍 Architecture — In-Depth Explanation
 
-## Major Components
+This platform is built in **6 distinct layers**, each with a clear responsibility. Here is an in-depth breakdown of every resource used, why it was chosen, and how it connects to the rest of the system.
 
-### Infrastructure (Terraform)
-- **State Management**: S3 backend (`algofleet-tf-state-kaushal-2026`) with state locking.
-- **Networking**: Custom VPC (`algofleet-vpc`) across 2 AZs, public/private subnets, and a single NAT Gateway.
-- **Compute**: EKS v1.34 with 4x `t3.medium` nodes managed by Karpenter.
+---
 
-### Kubernetes Addons
-- **AWS Load Balancer Controller**: Provisions AWS Network Load Balancers (NLBs).
-- **External Secrets Operator**: Syncs secrets from AWS Secrets Manager to K8s secrets.
-- **Kube-Prometheus-Stack**: Monitoring and Grafana dashboards.
+### Layer 1: Infrastructure (Terraform + AWS)
 
-### Workloads
-- **Strategy Bots**: 13 unique trading algorithms deployed as microservices.
-- **Postgres**: Internal database for trade history.
-- **Trade Dashboard**: FastAPI application exposing current fleet status.
+All AWS infrastructure is defined as code in the `terraform/` directory. This means the entire platform can be created or destroyed with a single command, is version-controlled, and is perfectly reproducible.
 
-## End-to-End Data Flow
-1. **Market Data**: Bots receive signals or tick data internally.
-2. **Signal Generation**: Python algorithms process data and generate buy/sell signals.
-3. **Execution**: Bot fires a request to the MT5 Bridge URL with the payload.
-4. **Persistence**: The trade execution result is saved to the internal PostgreSQL database.
-5. **Monitoring**: Trade Dashboard queries running pods and database to display active bots and overall system health.
+#### S3 Backend — Terraform State Store
 
-## Prerequisites
-- AWS Account with appropriate IAM permissions
-- `aws` CLI, `kubectl`, `terraform`, `helm`, `argocd` CLI
-- Docker
+**Resource:** `S3 bucket: algofleet-tf-state-kaushal-2026`
 
-## Setup Guide
-1. **Infrastructure**: Navigate to `terraform/` and run `terraform init`, `terraform apply`.
-2. **Secrets**: Ensure `algofleet/engine-config` exists in AWS Secrets Manager.
-3. **ArgoCD**: Install ArgoCD in the cluster and apply the `algofleet-strategies` Application manifest.
-4. **Monitoring**: Apply the `kube-prometheus-stack` Helm chart.
+**Why:** Terraform tracks what it has created in a "state file." By default this is stored locally, which makes team collaboration impossible. We store it in S3 so it is:
+- **Remote** — accessible from any machine, including CI/CD runners
+- **Encrypted** — `encrypt = true` ensures the state file is encrypted at rest
+- **Locked** — `use_lockfile = true` prevents two simultaneous `terraform apply` runs from colliding and corrupting state
 
-## Deploying a New Strategy
-1. Add the new strategy configuration to `variants/variants.json`.
-2. Commit and push to `main`.
-3. GitHub Actions triggers `scripts/gen_k8s_deployments.py`, auto-generates K8s deployment YAMLs, and commits them.
-4. ArgoCD detects the Git change and auto-syncs the new bot to the EKS cluster.
+#### VPC — Virtual Private Cloud
 
-## Accessing Services
-- **Grafana**: Available via its internet-facing NLB on port 80 (mapped to 3000). Use admin credentials deployed via Helm values.
-- **Trade Dashboard**: Available via its internet-facing NLB on port 80 (mapped to 8000).
+**Resource:** `algofleet-vpc`, CIDR `10.0.0.0/16`, using the `terraform-aws-modules/vpc/aws` module
 
-## Secrets Management
-We use the **External Secrets Operator**. A `ClusterSecretStore` points to AWS Secrets Manager. An `ExternalSecret` resource in the `trading` namespace pulls `algofleet/engine-config` and creates a Kubernetes secret with the MT5 credentials and DB URL. Bots mount this as an environment variable `ENGINE_CONFIG_JSON`.
+**Why:** EKS nodes must run inside a VPC for network isolation. We never expose worker nodes directly to the internet — they live in private subnets. A custom VPC gives us complete control over routing, security groups, and subnet design.
 
-## GitOps with ArgoCD
-ArgoCD continuously monitors the GitHub repository. When the CI pipeline updates the deployment manifests, ArgoCD synchronizes the cluster state with the Git state, ensuring a single source of truth.
+**Design decisions:**
+- **2 Availability Zones** (`ap-south-1a`, `ap-south-1b`): Running in 2 AZs means if one data centre has an outage, the other continues serving traffic. Our EKS node group spans both, so Kubernetes automatically reschedules pods to healthy nodes.
+- **Public Subnets** (`10.0.101.0/24`, `10.0.102.0/24`): These are where AWS Network Load Balancers are provisioned. NLBs need public IPs to accept internet traffic. Tagged with `kubernetes.io/role/elb = 1` so the AWS Load Balancer Controller knows these are the correct subnets for public LBs.
+- **Private Subnets** (`10.0.1.0/24`, `10.0.2.0/24`): All EKS worker nodes run here. They have no public IP addresses, making them invisible to the internet. Tagged with `kubernetes.io/role/internal-elb = 1` for internal LBs, and `karpenter.sh/discovery = algofleet-eks` for Karpenter.
+- **Single NAT Gateway**: Private-subnet nodes need outbound internet access to pull Docker images from ECR and call the MT5 bridge API. The NAT Gateway provides this one-way outbound access. We use a single NAT (rather than one per AZ) to save cost — acceptable for a portfolio environment. Production would use one NAT per AZ.
 
-## Project Directory Structure
+#### EKS Cluster — Elastic Kubernetes Service
+
+**Resource:** `algofleet-eks`, Kubernetes v1.34, using `terraform-aws-modules/eks/aws`
+
+**Why EKS over self-managed Kubernetes:** Running your own Kubernetes control plane (etcd, kube-apiserver, kube-scheduler, kube-controller-manager) is complex and operationally expensive. EKS manages the control plane entirely — AWS handles high availability, upgrades, backups, and security patching. We only manage the worker nodes.
+
+**Configuration:**
+- `cluster_endpoint_public_access = true`: The Kubernetes API server is accessible from the internet (secured by IAM + OIDC). This allows running `kubectl` from laptops and GitHub Actions runners without VPN.
+- `enable_cluster_creator_admin_permissions = true`: Automatically grants the IAM identity that ran `terraform apply` full admin access via the EKS access entry system. No manual `aws-auth` ConfigMap editing needed.
+- **Node Group** (`algofleet_nodes`): `t3.medium` instances (2 vCPU, 4 GB RAM), desired 4, min 2, max 6. Additional IAM policy `AmazonEBSCSIDriverPolicy` lets nodes attach EBS volumes for PostgreSQL.
+
+#### EBS CSI Driver Addon
+
+**Resource:** `aws-ebs-csi-driver`, installed as an EKS cluster addon
+
+**Why:** PostgreSQL stores data on persistent disk. In Kubernetes, pods are ephemeral. The EBS CSI (Container Storage Interface) Driver is the bridge between Kubernetes' storage system and AWS EBS — it creates, attaches, and detaches EBS volumes automatically when pods request storage via PersistentVolumeClaims. Without it, the PostgreSQL StatefulSet cannot start.
+
+#### Karpenter — Node Auto-Provisioner
+
+**Resource:** Karpenter IAM roles + IRSA setup via Terraform
+
+**Why Karpenter over Cluster Autoscaler:** The traditional Cluster Autoscaler can only scale fixed node groups with pre-defined instance types. Karpenter directly provisions EC2 instances of the optimal size for the workload. If a large pod needs 8 GB RAM, Karpenter picks an instance with 8 GB rather than waiting for a pre-defined group to scale. This saves cost and reduces scheduling latency.
+
+#### ECR — Elastic Container Registry
+
+**Resources:** Two repositories — `strategy-engine` and `trade-dashboard`
+
+**Why ECR over Docker Hub:** ECR is AWS-native, meaning EKS nodes pull images using their existing IAM role — no external authentication needed. It is in the same region as the cluster, so pulls are fast (within the AWS backbone, no cross-internet charges). ECR also scans images for vulnerabilities on push (`scan_on_push = true`).
+
+- `strategy-engine` — image for all 13 bots. One image, 13 bots — the specific strategy is selected by the `STRATEGY_SCRIPT` env variable.
+- `trade-dashboard` — image for the FastAPI status dashboard.
+
+#### AWS Secrets Manager
+
+**Resource:** `aws_secretsmanager_secret` named `algofleet/engine-config`
+
+**Why Secrets Manager over K8s Secrets or env variables:** Kubernetes Secrets are only base64-encoded (not truly encrypted) and live inside the cluster. AWS Secrets Manager provides encryption at rest via AWS KMS, fine-grained IAM access control, audit logging via CloudTrail, and versioning. No secret ever touches the Git repository.
+
+**Secret contents (structure):**
+```json
+{
+  "BOT_TOKEN": "<telegram-bot-token for trade alerts>",
+  "CHAT_ID": "<telegram-chat-id>",
+  "MT5_BRIDGE_URL": "https://exness-bridge-mt5.pickleballify.com/277746877/demo",
+  "MT5_API_KEY": "<api-key>",
+  "TRADE_DB_URL": "postgresql://algofleet:pass@postgres.trading.svc.cluster.local:5432/algofleet"
+}
+```
+
+#### IRSA — IAM Roles for Service Accounts
+
+**Resources:** `algofleet-external-secrets` and `algofleet-alb-controller` IAM roles
+
+**Why IRSA:** The old approach was giving the EC2 node an IAM role, which means EVERY pod on that node inherits ALL permissions — a major security risk. IRSA binds IAM roles to specific Kubernetes Service Accounts using OIDC federation. Only pods using a specific Service Account can assume that specific IAM role. Zero trust, minimum privilege.
+
+#### GitHub OIDC — Keyless CI/CD Authentication
+
+**Resource:** `aws_iam_openid_connect_provider` + `aws_iam_role.github_actions`
+
+**Why:** With GitHub OIDC, GitHub Actions generates a short-lived JWT token signed by GitHub. AWS trusts GitHub as an OIDC provider and exchanges this for a temporary AWS session (15 minutes). No long-lived credentials exist anywhere. The IAM role is scoped to only trust tokens from `repo:kaushalpatil205/*` — no other GitHub repo can assume this role.
+
+---
+
+### Layer 2: Container Runtime (EKS + ECR + Docker)
+
+#### Docker — Container Images
+
+**Why containers:** Each strategy bot is a Python application with dependencies (pandas, numpy, MT5 libraries, etc.). Containers package code AND dependencies together into a single immutable unit. This eliminates "works on my machine" problems.
+
+**Single shared image design:** All 13 bots use the SAME `strategy-engine` Docker image. The `entrypoint.sh` reads the `STRATEGY_SCRIPT` environment variable to decide which Python file to run. This means pushing one new image updates all 13 bots on next rollout.
+
+**How `ENGINE_CONFIG_JSON` flows into Python:** The Docker `entrypoint.sh` reads the `ENGINE_CONFIG_JSON` environment variable and writes its contents to `/app/Live/engine.json`. The Python code in `engine/config.py` then reads this file. Individual config values are also available as direct environment variables, which take absolute precedence.
+
+---
+
+### Layer 3: Cluster Addons
+
+These are Kubernetes operators installed via ArgoCD Helm deployments that extend the cluster's native capabilities.
+
+#### AWS Load Balancer Controller (v1.7.1)
+
+**Namespace:** `kube-system`
+
+**Why:** When you create a `LoadBalancer` Service in Kubernetes, the legacy in-tree cloud provider creates old **Classic Load Balancers (CLBs)**, which have limited features and often fail to properly route traffic in modern EKS setups (CLBs don't support the NLB-based target group binding that EKS security groups expect).
+
+The AWS Load Balancer Controller creates modern **Network Load Balancers (NLBs)** when triggered by annotations on Services. NLBs operate at Layer 4 (TCP), have microsecond latency, and correctly integrate with AWS security groups.
+
+**How it works:** The controller runs as a Deployment, watches for Services with annotation `service.beta.kubernetes.io/aws-load-balancer-type: nlb`, then calls the AWS API to create and configure the NLB. When the Service is deleted, it deletes the NLB automatically — preventing orphaned charges.
+
+**IRSA:** Uses the `algofleet-alb-controller` IAM role (via IRSA on its Service Account) to make AWS API calls.
+
+#### External Secrets Operator (v0.9.11)
+
+**Namespace:** `external-secrets`
+
+**Why:** Secrets must not live in Git. But pods need secrets at runtime. The External Secrets Operator watches for `ExternalSecret` custom resources, reaches out to AWS Secrets Manager, fetches the secret, and creates a standard Kubernetes Secret. Bot pods never touch AWS Secrets Manager directly.
+
+**Components:**
+- `ClusterSecretStore` (`aws-secrets`): Cluster-wide config pointing to AWS Secrets Manager in `ap-south-1`, authenticated via IRSA.
+- `ExternalSecret` (`engine-config` in `trading` namespace): Says "fetch AWS secret `algofleet/engine-config`, create a K8s Secret named `engine-config` with key `json`. Refresh every 1 hour."
+- The resulting K8s Secret is referenced in bot deployments via `secretKeyRef`.
+
+#### gp3 StorageClass
+
+**Why gp3 over gp2:** `gp3` is 20% cheaper than `gp2` and provides 3,000 IOPS as a baseline (gp2 baseline scales with volume size, making small volumes slower). Marked as default (`storageclass.kubernetes.io/is-default-class: "true"`) so PostgreSQL's PVC uses it automatically.
+
+`volumeBindingMode: WaitForFirstConsumer` — the EBS volume is not created until a pod actually tries to mount it. This ensures the volume is created in the same Availability Zone as the pod (since EBS volumes are AZ-scoped).
+
+---
+
+### Layer 4: Workloads (Trading Namespace)
+
+#### Strategy Bot Pods — The Core of AlgoFleet
+
+**How each bot works:**
+1. Pod starts, `entrypoint.sh` writes `ENGINE_CONFIG_JSON` environment variable to `/app/Live/engine.json`
+2. The specific Python strategy file (e.g., `Live/Strategy 17/s17_m1m2_v1_forex_sell.py`) executes
+3. The strategy connects to the MT5 Bridge API using credentials from the injected secret
+4. It fetches market data (OHLC candles) from MT5 via the bridge
+5. It runs the strategy algorithm to generate buy/sell signals
+6. On signal confirmation, it places a real trade via HTTP POST to the MT5 bridge
+7. The trade result is recorded in PostgreSQL
+8. A heartbeat file `/tmp/heartbeat` is updated periodically to prove the bot is alive
+
+**Health Checks:**
+- **Liveness Probe**: Checks `/tmp/heartbeat` was modified within the last 180 seconds. If the bot freezes, the heartbeat stops and Kubernetes automatically restarts the pod.
+- **Readiness Probe**: Checks that `/tmp/heartbeat` exists. Until the bot has fully initialized, the pod is not marked Ready.
+
+**Resource Limits:**
+- `requests: memory: 256Mi, cpu: 100m` — minimum guaranteed resources for scheduling
+- `limits: memory: 512Mi, cpu: 500m` — maximum allowed, preventing a misbehaving bot from crashing the node
+
+#### PostgreSQL 15 — Trade Database
+
+**Resource:** `StatefulSet` in `trading` namespace, `postgres:15-alpine` image
+
+**Why StatefulSet over Deployment:** `Deployments` are for stateless pods. `StatefulSets` provide stable pod names (`postgres-0`), ordered startup, stable internal DNS (`postgres.trading.svc.cluster.local:5432`), and dedicated PersistentVolumeClaims — all critical for a database.
+
+**PGDATA Configuration:** We set `PGDATA=/var/lib/postgresql/data/pgdata` (a subdirectory). Why? The EBS volume mounts at `/var/lib/postgresql/data`. When Kubernetes mounts an EBS volume, the mount root already has filesystem metadata. PostgreSQL refuses to initialize in a non-empty directory. Using a subdirectory gives PostgreSQL a clean, empty directory to initialize in.
+
+**Persistent Volume:** 5 GiB EBS gp3 volume. Even if `postgres-0` is deleted and recreated, the same EBS volume is reattached and all trade data persists.
+
+#### Trade Dashboard
+
+FastAPI application exposed via an internet-facing NLB on port 80 → 8000. Shows which of the 13 bots are alive and their trade registration status.
+
+---
+
+### Layer 5: Observability (Monitoring Namespace)
+
+#### Prometheus — Metrics Collection
+
+**Resource:** Part of `kube-prometheus-stack` Helm chart v56.6.2
+
+**Why Prometheus:** Works on a **pull model** — Prometheus scrapes HTTP `/metrics` endpoints on pods. No metrics are lost if Prometheus is temporarily down. Includes `kube-state-metrics` (Kubernetes object state) and `node-exporter` (EC2 host metrics). Uses a built-in Time Series Database (TSDB) for efficient metric storage.
+
+**Why `kube-prometheus-stack`:** Bundles Prometheus + Grafana + Alertmanager + all CRDs (PrometheusRule, ServiceMonitor) in one Helm chart. `ServiceMonitor` CRDs let us declaratively configure what Prometheus scrapes — no manual config file editing.
+
+#### Grafana — Visualization
+
+Connects to Prometheus as a data source and renders metrics into interactive dashboards. Pre-built dashboards for Kubernetes cluster health (node CPU/memory, pod restarts) come included.
+
+**Exposure:** Port 3000 inside cluster. Service is a `LoadBalancer` type with annotations:
+- `service.beta.kubernetes.io/aws-load-balancer-type: nlb` — forces AWS LBC to create NLB instead of CLB
+- `service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing` — places NLB in public subnets with a public IP
+
+---
+
+### Layer 6: GitOps and CI/CD
+
+#### ArgoCD — GitOps Controller
+
+**Namespace:** `argocd`
+
+**Why GitOps:** Traditional deployments require manual `kubectl apply`. With GitOps, the Git repository is the single source of truth. ArgoCD continuously (every 3 minutes) compares desired state in Git with actual cluster state and automatically corrects differences.
+
+This means:
+- **Accidental manual changes are auto-reverted** (`selfHeal: true`)
+- **Full audit trail** — every deployment is a git commit
+- **Easy rollback** — `git revert` a commit and ArgoCD rolls back the cluster
+- **Drift detection** — ArgoCD tells you if cluster differs from Git
+
+**ArgoCD Applications:**
+1. `algofleet-strategies` — all 13 bot Deployments + PostgreSQL StatefulSet + External Secrets resources
+2. `prometheus-grafana` — full monitoring stack via Helm from prometheus-community repo
+3. `aws-load-balancer-controller` — AWS LBC via Helm from eks-charts repo
+4. `external-secrets` — ESO via Helm from external-secrets repo
+
+#### GitHub Actions — CI/CD Pipeline
+
+**Trigger:** Push to `main` AND `variants/variants.json` was changed.
+
+**Why this trigger:** `variants.json` is the master config for all strategies. When a new strategy is added, CI auto-generates the Kubernetes YAML. Engineers only edit `variants.json` — they never write raw Kubernetes YAML manually.
+
+**Pipeline steps:**
+1. Checkout repository
+2. Run `python3 scripts/gen_k8s_deployments.py` — reads `variants.json`, generates deployment YAMLs in `kubernetes/strategies/`
+3. `git commit` + `git push` — commits generated YAMLs back to the repo
+4. ArgoCD detects the new commit (within 3 minutes) and syncs to EKS
+
+---
+
+## 🔄 End-to-End Data Flow — How a Trade Happens
+
+```
+1. MARKET TICK
+   MT5 platform (broker server)
+   → Bot connects via MT5 Bridge API (HTTP/REST)
+   → Fetches OHLC candle data for the configured instrument (e.g., XAUUSD 1H)
+
+2. SIGNAL GENERATION
+   Python strategy algorithm (e.g., s17_m2m3_v4_xauusd_buy.py)
+   → Calculates indicators (EMA, RSI, momentum, etc.)
+   → Detects setup conditions (M2 pattern on higher timeframe)
+   → Waits for entry confirmation (M3 pattern on lower timeframe)
+
+3. TRADE EXECUTION
+   Bot sends HTTP POST to MT5 Bridge URL
+   URL: https://exness-bridge-mt5.pickleballify.com/277746877/demo
+   Payload: { symbol, action, volume, sl, tp, magic_number }
+   → MT5 bridge forwards the order to the Exness MT5 server
+   → Real trade is opened on account 277746877
+
+4. PERSISTENCE
+   Bot records trade details (ticket, symbol, direction, entry price, SL, TP)
+   → Writes to PostgreSQL at postgres.trading.svc.cluster.local:5432
+   → Database: algofleet, Table: trades
+
+5. TRAILING / MANAGEMENT
+   Bot continues monitoring the open position
+   → Updates trailing stop based on price movement
+   → Closes position when TP/SL is hit or trailing stop triggers
+   → Updates trade record in PostgreSQL (close price, P&L, duration)
+
+6. MONITORING
+   Prometheus scrapes bot metrics every 15s
+   Grafana displays real-time dashboards
+   Trade Dashboard shows bot registration and summary
+```
+
+---
+
+## 📁 Project Directory Structure
+
 ```text
-.
-├── .github/workflows/
+algofleet-orchestrator/
+│
+├── README.md                              ← This file
+├── .github/
+│   └── workflows/
+│       └── render-manifests.yml           ← CI: auto-generates K8s YAMLs from variants.json
+│
 ├── scripts/
-│   └── gen_k8s_deployments.py
+│   ├── gen_k8s_deployments.py            ← Reads variants.json → writes deployment YAMLs
+│   └── setup-secrets.sh                   ← Updates AWS Secrets Manager with MT5 credentials
+│
 ├── variants/
-│   └── variants.json
+│   └── variants.json                      ← Master config: all 13 strategy definitions
+│
+├── docker/
+│   ├── strategy-engine/
+│   │   ├── Dockerfile                     ← Base image for ALL 13 bots
+│   │   └── entrypoint.sh                  ← Writes ENGINE_CONFIG_JSON to /app/Live/engine.json
+│   └── trade-dashboard/
+│       └── Dockerfile                     ← FastAPI dashboard image
+│
+├── strategy-engine/                       ← Git submodule: actual Python trading code
+│   └── Live/
+│       ├── Strategy 17/                   ← s17 momentum strategies
+│       ├── Strategy 18/                   ← s18 multi-timeframe strategies
+│       ├── Strategy 21/                   ← s21 strategies
+│       ├── trade_db.py                    ← PostgreSQL integration layer
+│       └── engine/
+│           └── config.py                  ← Config resolution: Env > JSON > Default
+│
 ├── kubernetes/
-│   ├── trading/
-│   ├── monitoring/
-│   └── argocd/
+│   ├── namespaces.yaml                    ← Creates trading and monitoring namespaces
+│   ├── argocd/
+│   │   └── algofleet-app.yaml             ← ArgoCD Application for all strategies
+│   ├── addons/
+│   │   ├── aws-lbc.yaml                   ← ArgoCD App: AWS Load Balancer Controller
+│   │   ├── external-secrets.yaml          ← ArgoCD App: External Secrets Operator
+│   │   ├── prometheus-grafana.yaml        ← ArgoCD App: kube-prometheus-stack
+│   │   └── storageclass.yaml              ← gp3 default StorageClass
+│   ├── postgres/
+│   │   └── statefulset.yaml               ← PostgreSQL StatefulSet + ClusterIP Service
+│   └── strategies/
+│       ├── aws-secret-store.yaml          ← ClusterSecretStore → AWS Secrets Manager
+│       ├── engine-external-secret.yaml    ← ExternalSecret: algofleet/engine-config
+│       ├── s17-m1m2-v1-forex-sell/deployment.yaml
+│       ├── s17-m1m2-v4-btcusd-buy/deployment.yaml
+│       ├── ... (11 more strategy directories, auto-generated)
+│       └── trade-dashboard/
+│           ├── deployment.yaml
+│           └── service.yaml               ← NLB LoadBalancer Service
+│
 ├── terraform/
+│   ├── backend.tf                         ← S3 remote state backend
+│   ├── main.tf                            ← All AWS resources (VPC, EKS, ECR, IAM, etc.)
+│   └── outputs.tf                         ← Exported values (cluster name, ECR URL, role ARN)
+│
 └── docs/
+    └── troubleshooting.md                 ← Complete troubleshooting guide with all issues
 ```
 
-## Teardown
-To destroy all resources:
+---
+
+## 🤖 Strategy Bots — Complete List
+
+| Bot Name | Strategy | Instrument | Direction | Timeframes |
+|---|---|---|---|---|
+| `s17-m1m2-v1-forex-sell` | S17 M1→M2 V1 | Forex (USDJPY, EURUSD, USOIL) | SELL | M1 entry → M2 confirm |
+| `s17-m1m2-v4-btcusd-buy` | S17 M1→M2 V4 | BTCUSD | BUY | M1 entry → M2 confirm |
+| `s17-m2m3-v4-forex-buy` | S17 M2→M3 V4 | Forex (USDJPY, EURUSD, USOIL) | BUY | M2 setup → M3 entry |
+| `s17-m2m3-v4-xauusd-buy` | S17 M2→M3 V4 | XAUUSD (Gold) | BUY | M2 setup → M3 entry |
+| `s17-m3m2-v1-btcusd-sell` | S17 M3→M2 V1 | BTCUSD | SELL | M3 setup → M2 entry |
+| `s17-m3m2-v1-xauusd-sell` | S17 M3→M2 V1 | XAUUSD (Gold) | SELL | M3 setup → M2 entry |
+| `s18-1-1h5min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 1H setup → 5min entry + trailing |
+| `s18-1-1h5min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 1H setup → 5min entry + trailing |
+| `s18-1-2h15min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 2H setup → 15min trailing |
+| `s18-1-2h15min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 2H setup → 15min trailing |
+| `s18-1-4h15min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 4H setup → 15min entry |
+| `s18-1-4h15min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 4H setup → 15min entry |
+| `s21-btcusd` | S21 | BTCUSD | BUY + SELL | Multi-timeframe |
+
+---
+
+## 🛠️ Tech Stack Table
+
+| Category | Technology | Version | Purpose |
+|---|---|---|---|
+| Cloud Provider | AWS | — | All infrastructure |
+| Container Orchestration | Kubernetes (EKS) | 1.34 | Run and manage all pods |
+| Infrastructure as Code | Terraform | — | Provision all AWS resources |
+| GitOps | ArgoCD | v2.x | Sync Git state to Cluster |
+| CI/CD | GitHub Actions | — | Auto-generate manifests, push images |
+| Container Registry | Amazon ECR | — | Store Docker images |
+| Load Balancer | AWS NLB | — | Expose services to internet |
+| Secrets Management | AWS Secrets Manager | — | Store MT5 creds and API tokens |
+| Secrets Bridge | External Secrets Operator | 0.9.11 | AWS Secrets Manager to K8s Secrets |
+| Storage | AWS EBS gp3 | — | Persistent storage for PostgreSQL |
+| Database | PostgreSQL | 15-alpine | Trade records persistence |
+| Trading Execution | MT5 Bridge API | — | Place real MT5 trades |
+| Monitoring | Prometheus | kps 56.6.2 | Metrics collection |
+| Dashboards | Grafana | kps 56.6.2 | Metrics visualization |
+| App Language | Python | 3.11 | Trading algorithms |
+| Dashboard Backend | FastAPI | — | Trade status API |
+| Node Autoscaling | Karpenter | — | Dynamic EC2 provisioning |
+| EBS Provisioning | EBS CSI Driver | latest | Provision EBS PersistentVolumes |
+
+---
+
+## ✅ Prerequisites
+
 ```bash
-terraform destroy -auto-approve
+aws --version        # AWS CLI v2
+kubectl version      # kubectl 1.28+
+terraform --version  # Terraform 1.6+
+helm version         # Helm 3.x
+argocd version       # ArgoCD CLI
+docker --version     # Docker 24+
 ```
-*Note: Ensure you delete ArgoCD applications and Load Balancers manually if not managed purely by Terraform.*
 
-## Tech Stack
+**AWS Requirements:**
+- AWS Account in region `ap-south-1` (Mumbai) with Admin IAM permissions
+- AWS SSO or IAM user configured via `aws configure`
 
-| Category | Technology |
-|---|---|
-| Cloud | AWS (EKS, ECR, VPC, Secrets Manager) |
-| Container Orchestration | Kubernetes |
-| IaC | Terraform |
-| GitOps | ArgoCD |
-| CI/CD | GitHub Actions |
-| Data | PostgreSQL |
-| App Backend | Python, FastAPI |
-| Observability | Prometheus, Grafana |
+---
 
-## AWS Services
+## 🚀 Step-by-Step Setup Guide
 
-| Service | Usage |
-|---|---|
-| EKS | Kubernetes cluster running the workloads |
-| ECR | Docker image registry for bots and dashboard |
-| VPC | Network isolation |
-| Secrets Manager | Secure storage of MT5 credentials |
-| S3 | Terraform state backend |
-| NLB | Load balancing for incoming traffic |
-| EBS | Persistent storage for PostgreSQL |
+### Step 1 — Bootstrap Terraform State Bucket
+
+```bash
+aws s3api create-bucket \
+  --bucket algofleet-tf-state-kaushal-2026 \
+  --region ap-south-1 \
+  --create-bucket-configuration LocationConstraint=ap-south-1
+
+aws s3api put-bucket-versioning \
+  --bucket algofleet-tf-state-kaushal-2026 \
+  --versioning-configuration Status=Enabled
+```
+
+### Step 2 — Provision AWS Infrastructure via Terraform
+
+```bash
+cd terraform/
+terraform init
+terraform plan
+terraform apply   # Takes ~15-20 minutes for EKS
+```
+
+### Step 3 — Configure kubectl
+
+```bash
+aws eks update-kubeconfig --name algofleet-eks --region ap-south-1
+kubectl get nodes  # Verify 4 nodes are Ready
+```
+
+### Step 4 — Apply Prometheus CRDs (Must be done before ArgoCD syncs)
+
+> The kube-prometheus-stack CRDs are too large for standard kubectl apply. Use server-side apply:
+
+```bash
+cd "/Users/Vraj/Downloads/Project D/algofleet-orchestrator"
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm pull prometheus-community/kube-prometheus-stack --version 56.6.2 --untar
+kubectl apply --server-side -f kube-prometheus-stack/charts/crds/crds/
+rm -rf kube-prometheus-stack
+```
+
+### Step 5 — Install ArgoCD
+
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=120s
+
+# Get admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+### Step 6 — Apply Cluster Addons
+
+```bash
+kubectl apply -f kubernetes/addons/storageclass.yaml
+kubectl apply -f kubernetes/addons/aws-lbc.yaml
+kubectl apply -f kubernetes/addons/external-secrets.yaml
+kubectl apply -f kubernetes/addons/prometheus-grafana.yaml
+```
+
+### Step 7 — Upload Secrets to AWS Secrets Manager
+
+```bash
+# Edit scripts/setup-secrets.sh with your MT5 credentials first
+bash scripts/setup-secrets.sh
+```
+
+### Step 8 — Deploy All Strategies
+
+```bash
+kubectl apply -f kubernetes/namespaces.yaml
+kubectl apply -f kubernetes/argocd/algofleet-app.yaml
+# ArgoCD syncs all 13 bots + PostgreSQL automatically
+```
+
+### Step 9 — Verify
+
+```bash
+kubectl get pods -n trading      # 13 bots + postgres-0 = Running
+kubectl get pods -n monitoring   # prometheus + grafana = Running
+kubectl get svc -n trading       # trade-dashboard has EXTERNAL-IP
+kubectl get svc -n monitoring    # prometheus-grafana has EXTERNAL-IP
+```
+
+---
+
+## ➕ How to Deploy a New Strategy
+
+1. **Edit `variants/variants.json`** — add a new strategy entry with symbol, magic number, script path, risk.
+
+2. **Commit and push:**
+   ```bash
+   git add variants/variants.json
+   git commit -m "feat: add strategy 22 for ETHUSD"
+   git push origin main
+   ```
+
+3. **GitHub Actions automatically** runs `gen_k8s_deployments.py`, generates `kubernetes/strategies/s22-ethusd/deployment.yaml`, commits and pushes back to `main`.
+
+4. **ArgoCD automatically** (within 3 minutes) detects the new manifest and creates the new bot pod. It starts trading immediately.
+
+---
+
+## 🌐 Accessing Services
+
+### Grafana Dashboard
+
+```bash
+kubectl get svc prometheus-grafana -n monitoring  # Get EXTERNAL-IP
+# OR port-forward:
+kubectl port-forward svc/prometheus-grafana 3000:80 -n monitoring
+# Open: http://localhost:3000
+```
+**Username:** `admin` | **Password:** `admin`
+
+### Trade Dashboard
+
+```bash
+kubectl get svc trade-dashboard -n trading  # Get EXTERNAL-IP
+# Open the EXTERNAL-IP in browser on port 80
+```
+
+### Raw Prometheus UI
+
+```bash
+kubectl port-forward svc/prometheus-grafana-kube-pr-prometheus 9090:9090 -n monitoring
+# Open: http://localhost:9090
+```
+
+### ArgoCD UI
+
+```bash
+kubectl port-forward svc/argocd-server 8080:443 -n argocd
+# Open: https://localhost:8080
+# Username: admin  |  Password: see Step 5
+```
+
+---
+
+## 🔐 Secrets Management Deep Dive
+
+```
+AWS Secrets Manager: algofleet/engine-config
+  └── Contains: MT5_BRIDGE_URL, MT5_API_KEY, BOT_TOKEN, CHAT_ID, TRADE_DB_URL
+        │
+        ▼ (External Secrets Operator polls every 1h via IRSA)
+  Kubernetes Secret: engine-config (in trading namespace)
+        └── key: json = <full secret as JSON string>
+              │
+              ▼ (mounted as environment variable by K8s)
+  Bot Pod: ENGINE_CONFIG_JSON = <full JSON>
+              │
+              ▼ (entrypoint.sh writes to file)
+  /app/Live/engine.json → read by Python engine/config.py
+```
+
+**To update a secret:**
+```bash
+bash scripts/setup-secrets.sh  # Update in AWS Secrets Manager
+kubectl rollout restart deployment -n trading  # Force immediate pickup (ESO refreshes in 1h otherwise)
+```
+
+---
+
+## 💣 Teardown Guide
+
+> ⚠️ **Critical Order:** Delete ArgoCD apps FIRST. ArgoCD manages the LoadBalancer Services. When Services are deleted, the AWS Load Balancer Controller removes the actual NLBs from AWS. If you destroy EKS first, the NLBs become orphaned and keep charging you indefinitely.
+
+```bash
+# Step 1 — Delete ArgoCD apps (removes K8s resources including NLBs)
+cd "/Users/Vraj/Downloads/Project D/algofleet-orchestrator"
+kubectl delete application -n argocd algofleet-strategies prometheus-grafana
+
+# Wait 2-3 minutes for NLBs to be deprovisioned by AWS Load Balancer Controller
+
+# Step 2 — Destroy all AWS infrastructure via Terraform
+cd terraform
+terraform destroy -auto-approve
+
+# Step 3 — Delete the S3 state bucket
+aws s3 rm s3://algofleet-tf-state-kaushal-2026 --recursive
+aws s3api delete-bucket --bucket algofleet-tf-state-kaushal-2026 --region ap-south-1
+
+echo "All resources destroyed. No more charges."
+```
+
+---
+
+## 📚 Further Reading
+
+- [docs/troubleshooting.md](docs/troubleshooting.md) — Complete guide to all issues encountered and how they were resolved
+- [AWS EKS Documentation](https://docs.aws.amazon.com/eks/)
+- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
+- [External Secrets Operator](https://external-secrets.io/)
+- [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/)
