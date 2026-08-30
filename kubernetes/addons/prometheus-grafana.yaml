@@ -24,6 +24,8 @@ spec:
 
             annotations:
               service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+              service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+
 
   destination:
     server: https://kubernetes.default.svc
