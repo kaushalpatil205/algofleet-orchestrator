@@ -44,6 +44,7 @@ spec:
     - metadata:
         name: postgres-data
       spec:
+        storageClassName: gp3
         accessModes: [ "ReadWriteOnce" ]
         resources:
           requests:
