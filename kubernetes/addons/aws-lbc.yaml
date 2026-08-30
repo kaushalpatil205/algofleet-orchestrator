@@ -13,8 +13,10 @@ spec:
       values: |
         clusterName: algofleet-eks
         serviceAccount:
-          create: false
+          create: true
           name: aws-load-balancer-controller
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::561789488706:role/algofleet-alb-controller
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
