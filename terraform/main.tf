@@ -55,7 +55,7 @@ module "eks" {
       instance_types = ["t3.medium"]
       min_size       = 2
       max_size       = 6
-      desired_size   = 2
+      desired_size   = 4
 
       # Give the nodes permission to create and attach EBS volumes for PostgreSQL
       iam_role_additional_policies = {
