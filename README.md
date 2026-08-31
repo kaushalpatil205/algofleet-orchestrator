@@ -96,11 +96,14 @@ Account: <YOUR_ACCOUNT_ID>"]
     PRIV_REPO["fa:fa-lock Private Strategy Engine Repo"]
 
     JENKINS["fa:fa-cog Jenkins CI/CD"]
+    GHA["fa:fa-github GitHub Actions"]
+    
+    REPO -->|"triggers (variants.json)"| GHA
+    GHA -.->|"commit manifests"| REPO
     
     REPO -->|"pulls orchestration"| JENKINS
     PRIV_REPO -->|"pulls proprietary IP"| JENKINS
     JENKINS -->|"build/push"| ECR
-    JENKINS -.->|"commit manifests"| REPO
     REPO -.->|"polls"| ARGO
     ARGO -->|"applies"| EKS
     
@@ -338,7 +341,13 @@ This means:
 3. `aws-load-balancer-controller` — AWS LBC via Helm from eks-charts repo
 4. `external-secrets` — ESO via Helm from external-secrets repo
 
-#### Jenkins — CI/CD Pipeline & Private Strategy Integration
+#### GitHub Actions — Automated Manifest Generation
+
+**Trigger:** Push to `main` AND `variants/variants.json` was changed.
+
+**Why:** We use GitHub Actions to automate GitOps manifest rendering. Engineers only edit the `variants.json` config file. When pushed, GitHub Actions automatically runs the Python script (`gen_k8s_deployments.py`) to generate all the Kubernetes YAML files and commits them back to the repository. This guarantees that human error is removed from writing K8s YAMLs.
+
+#### Jenkins — Secure Docker Builds & Private Strategy Integration
 
 **Trigger:** Commit to the repository or scheduled builds.
 
@@ -476,7 +485,7 @@ algofleet-orchestrator/
 | Infrastructure as Code | Terraform | — | Provision all AWS resources |
 | GitOps | ArgoCD | v2.x | Sync Git state to Cluster |
 | Configuration Management | Ansible | — | Setup Bastion Host |
-| CI/CD Pipeline | Jenkins | — | Build images and integrate private strategy repo |
+| CI/CD Pipeline | Jenkins & GitHub Actions | — | Jenkins (Builds) & GH Actions (Manifests) |
 | Container Registry | Amazon ECR | — | Store Docker images |
 | Load Balancer | AWS NLB | — | Expose services to internet |
 | Secrets Management | AWS Secrets Manager | — | Store MT5 creds and API tokens |

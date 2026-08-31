@@ -2,7 +2,7 @@
 
 This flowchart demonstrates the end-to-end flow of the project, separating the infrastructure architecture from the data and trade flow.
 
-## 1. CI/CD & Deployment Flow (Jenkins Integration)
+## 1. CI/CD & Deployment Flow (GitHub Actions & Jenkins)
 
 ```mermaid
 flowchart LR
@@ -10,13 +10,15 @@ flowchart LR
     
     PRIV_REPO["🔒 Private Strategy Engine Repo"]
     
-    REPO -->|Triggers| JENKINS["⚙️ Jenkins CI/CD"]
-    PRIV_REPO -->|Securely Cloned| JENKINS
+    REPO -->|1. triggers (variants.json)| GHA["⚙️ GitHub Actions"]
+    GHA -->|2. Gen Manifests and Commit| REPO
     
-    JENKINS -->|1. Build and Push| ECR["📦 ECR Registry"]
-    JENKINS -->|2. Gen Manifests and Commit| REPO
+    REPO -->|3. Triggers| JENKINS["⚙️ Jenkins CI/CD"]
+    PRIV_REPO -->|4. Securely Cloned| JENKINS
     
-    REPO -->|Polls Git| ARGO["🐙 ArgoCD GitOps Controller"]
+    JENKINS -->|5. Build and Push| ECR["📦 ECR Registry"]
+    
+    REPO -->|6. Polls Git| ARGO["🐙 ArgoCD GitOps Controller"]
     
     subgraph "AWS EKS Cluster"
         ARGO -->|Syncs Apps| BOTS["🤖 Strategy Pods"]
