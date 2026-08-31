@@ -341,22 +341,21 @@ This means:
 3. `aws-load-balancer-controller` — AWS LBC via Helm from eks-charts repo
 4. `external-secrets` — ESO via Helm from external-secrets repo
 
-#### GitHub Actions — Automated Manifest Generation
+#### Secure Multi-Repo CI/CD Architecture (GitHub Actions + Jenkins)
 
-**Trigger:** Push to `main` AND `variants/variants.json` was changed.
+This project utilizes a dual-repository setup to separate public infrastructure from proprietary trading algorithms. We use a combination of **GitHub Actions** and **Jenkins** to handle this secure split.
 
-**Why:** We use GitHub Actions to automate GitOps manifest rendering. Engineers only edit the `variants.json` config file. When pushed, GitHub Actions automatically runs the Python script (`gen_k8s_deployments.py`) to generate all the Kubernetes YAML files and commits them back to the repository. This guarantees that human error is removed from writing K8s YAMLs.
+**1. Private Strategy Engine Repository (`strategy-engine`)**
+This private repository contains the proprietary Python algorithms. It strictly uses **GitHub Actions** for testing and image building to keep the intellectual property secure. The workflows include:
+*   `python-syntax-check.yml`: Runs automated syntax checks (flake8) on the Python algorithms to catch bugs before they reach live trading.
+*   `live-execution-check.yml`: Tests live execution and trailing stop logic to ensure order placement APIs function correctly.
+*   `build-and-push.yml`: Builds the core `strategy-engine` Docker image containing the proprietary algorithms and pushes it directly to AWS ECR.
+*   `build-dashboard.yml`: Builds the FastAPI `trade-dashboard` Docker image and pushes it to AWS ECR.
 
-#### Jenkins — Secure Docker Builds & Private Strategy Integration
-
-**Trigger:** Commit to the repository or scheduled builds.
-
-**Why Jenkins over standard GitHub Actions:** The project separates the public orchestration infrastructure from the proprietary trading algorithms. Jenkins handles the secure integration of these two parts:
-1. **Checkout Public DevOps Repo:** Pulls this infrastructure repository.
-2. **Checkout Private Strategy Engine:** Securely pulls the proprietary trading code from the main private strategy repository (`strategy-engine`) using dedicated credentials. This ensures the trading IP remains completely hidden.
-3. **Generate K8s Manifests:** Runs a Python script to dynamically generate Kubernetes deployment YAMLs for each strategy.
-4. **Build & Push:** Packages the private strategy engine into a secure Docker image and pushes it to AWS ECR.
-5. **Deploy:** Can either directly apply to EKS or let ArgoCD pick up the generated manifests for GitOps synchronization.
+**2. Public Orchestration Repository (This Repo)**
+This public repository acts as the GitOps source of truth for Kubernetes infrastructure.
+*   **GitHub Actions (`render-manifests.yml`)**: Watches the `variants.json` file. When an engineer configures a new strategy pod, this workflow automatically runs a Python script to generate the exact Kubernetes YAML manifests and commits them back to the repository.
+*   **Jenkins CI/CD**: A `Jenkinsfile` is configured to act as a secure, self-hosted deployment bridge. It uses local credentials (`github-private-repo-token`) to check out both the public infrastructure repo AND the private strategy engine repo. It merges them securely, allowing for advanced self-hosted builds or direct EKS deployments without exposing sensitive tokens to public GitHub runners.
 
 #### Ansible — Infrastructure Configuration
 

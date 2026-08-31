@@ -2,27 +2,38 @@
 
 This flowchart demonstrates the end-to-end flow of the project, separating the infrastructure architecture from the data and trade flow.
 
-## 1. CI/CD & Deployment Flow (GitHub Actions & Jenkins)
+## 1. CI/CD & Deployment Flow (Dual-Repo Architecture)
 
 ```mermaid
 flowchart LR
-    DEV["👨‍💻 Developer"] -->|git push| REPO["📦 Public DevOps Repository"]
+    DEV["👨‍💻 Developer"] -->|1. git push config| REPO["📦 Public DevOps Repo
+(algofleet-orchestrator)"]
+    DEV -->|2. git push code| PRIV_REPO["🔒 Private Strategy Repo
+(strategy-engine)"]
     
-    PRIV_REPO["🔒 Private Strategy Engine Repo"]
+    subgraph "Private Repo CI/CD"
+        PRIV_REPO -->|Triggers| PRIV_GHA["⚙️ GitHub Actions
+(Syntax, Tests, Build)"]
+        PRIV_GHA -->|Build & Push Images| ECR["📦 ECR Registry"]
+    end
     
-    REPO -->|1. triggers (variants.json)| GHA["⚙️ GitHub Actions"]
-    GHA -->|2. Gen Manifests and Commit| REPO
+    subgraph "Public Repo CI/CD"
+        REPO -->|Triggers| PUB_GHA["⚙️ GitHub Actions
+(render-manifests)"]
+        PUB_GHA -->|Commit YAMLs| REPO
+    end
     
-    REPO -->|3. Triggers| JENKINS["⚙️ Jenkins CI/CD"]
-    PRIV_REPO -->|4. Securely Cloned| JENKINS
+    subgraph "Jenkins Secure Bridge"
+        REPO -->|Checks out| JENKINS["⚙️ Jenkins CI/CD"]
+        PRIV_REPO -->|Securely Cloned| JENKINS
+        JENKINS -->|Alternative Build/Deploy| ECR
+    end
     
-    JENKINS -->|5. Build and Push| ECR["📦 ECR Registry"]
-    
-    REPO -->|6. Polls Git| ARGO["🐙 ArgoCD GitOps Controller"]
+    REPO -->|Polls Git| ARGO["🐙 ArgoCD GitOps Controller"]
     
     subgraph "AWS EKS Cluster"
-        ARGO -->|Syncs Apps| BOTS["🤖 Strategy Pods"]
-        ARGO -->|Syncs Addons| ADDONS["🔌 K8s Addons"]
+        ARGO -->|Syncs Manifests| BOTS["🤖 Strategy Pods"]
+        BOTS -.->|Pulls Images| ECR
     end
 ```
 
