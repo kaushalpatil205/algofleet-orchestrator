@@ -50,74 +50,125 @@ The entire platform is managed using **GitOps principles** — the Git repositor
 ## 🏗️ Architecture Diagram
 
 ```mermaid
-flowchart LR
-    DEV["fa:fa-user Developer"] -->|"git push"| REPO["fa:fa-box Public Git Repository"]
+flowchart TB
+    %% Actors and Source Control
+    DEV["👨‍💻 Developer"]
+    
+    subgraph GIT["Source Control (GitHub)"]
+        direction LR
+        PRIV_REPO["🔒 Private Repo
+(strategy-engine)"]
+        PUB_REPO["📦 Public Repo
+(algofleet-orchestrator)"]
+    end
 
-    subgraph AWS["AWS Cloud (ap-south-1)"]
+    %% CI/CD Pipelines Split
+    subgraph CICD["CI/CD Pipelines (Two Deployment Options)"]
         direction TB
-        SM["fa:fa-lock Secrets Manager"]
-        ECR["fa:fa-box ECR Registry"]
-        BASTION["fa:fa-server Bastion Host
-(Configured via Ansible)"]
-
-        subgraph VPC["VPC (10.0.0.0/16)"]
+        subgraph PATH_A["Path A: Modern GitOps"]
+            direction LR
+            GHA_PRIV["GH Actions (Private)
+Tests & Docker Build"]
+            GHA_PUB["GH Actions (Public)
+Render K8s YAMLs"]
+        end
+        subgraph PATH_B["Path B: Traditional Pipeline"]
+            JENKINS["⚙️ Jenkins Server
+Self-Hosted Pipeline"]
+        end
+    end
+    
+    %% AWS Infrastructure
+    subgraph AWS["☁️ AWS Cloud Infrastructure (ap-south-1)"]
+        direction TB
+        SM["🔐 AWS Secrets Manager"]
+        ECR["📦 AWS ECR (Docker Registry)"]
+        
+        subgraph VPC["🌐 VPC (10.0.0.0/16)"]
             direction TB
-            subgraph PUB["Public Subnets"]
-                NLB1["NLB: Dashboard"]
-                NLB2["NLB: Grafana"]
+            
+            subgraph PUB_SUB["Public Subnets"]
+                direction LR
+                BASTION["🖥️ Bastion Host
+(Provisioned via Ansible)"]
+                NLB_DASH["⚖️ Network Load Balancer
+(Trade Dashboard)"]
+                NLB_GRAF["⚖️ Network Load Balancer
+(Grafana)"]
             end
+            
+            NAT["🔀 NAT Gateway
+(Outbound Internet)"]
 
-            subgraph PRIV["Private Subnets"]
-                subgraph EKS["EKS Cluster (v1.34)"]
-                    direction LR
-                    subgraph NS_TRADING["NS: trading"]
-                        BOTS["Strategy Pods"]
-                        PG["PostgreSQL 15"]
-                        DASH["Trade Dashboard"]
+            subgraph PRIV_SUB["Private Subnets"]
+                subgraph EKS["☸️ Elastic Kubernetes Service (EKS v1.34)"]
+                    direction TB
+                    
+                    subgraph NS_SYS["Namespace: argocd & kube-system"]
+                        ARGO["🐙 ArgoCD
+(GitOps Controller)"]
+                        ESO["🔑 External Secrets
+(ESO Operator)"]
+                        LBC["🔄 AWS LBC
+(LB Controller)"]
                     end
-
-                    subgraph NS_MON["NS: monitoring"]
-                        PROM["Prometheus"]
-                        GRAF["Grafana"]
+                    
+                    subgraph NS_TRADING["Namespace: trading"]
+                        BOTS["🤖 Strategy Pods
+(Python Algorithms)"]
+                        PG["🗃️ PostgreSQL 15
+(StatefulSet + EBS gp3)"]
+                        DASH["📊 Trade Dashboard
+(FastAPI)"]
                     end
-
-                    subgraph NS_SYS["NS: argocd & addons"]
-                        ARGO["ArgoCD"]
-                        ESO["External Secrets"]
+                    
+                    subgraph NS_MON["Namespace: monitoring"]
+                        PROM["📈 Prometheus
+(Metrics Scraper)"]
+                        GRAF["📊 Grafana
+(Visualizations)"]
                     end
                 end
-                NAT["NAT Gateway"]
             end
         end
     end
 
-    MT5["MT5 Bridge API
-Account: <YOUR_ACCOUNT_ID>"]
-    PRIV_REPO["fa:fa-lock Private Strategy Engine Repo"]
+    MT5["💹 MT5 Bridge API
+(Broker Server)"]
 
-    JENKINS["fa:fa-cog Jenkins CI/CD"]
-    GHA["fa:fa-github GitHub Actions"]
+    %% Flow Connections
+    DEV -->|1. Pushes Code| GIT
     
-    REPO -->|"triggers (variants.json)"| GHA
-    GHA -.->|"commit manifests"| REPO
+    %% Path A Connections
+    PRIV_REPO -->|Triggers| GHA_PRIV
+    PUB_REPO -->|Triggers| GHA_PUB
+    GHA_PRIV -->|Pushes Image| ECR
+    GHA_PUB -->|Commits YAMLs| PUB_REPO
+    PUB_REPO -->|ArgoCD Polls| ARGO
+    ARGO -->|Syncs Manifests| EKS
     
-    REPO -->|"pulls orchestration"| JENKINS
-    PRIV_REPO -->|"pulls proprietary IP"| JENKINS
-    JENKINS -->|"build/push"| ECR
-    REPO -.->|"polls"| ARGO
-    ARGO -->|"applies"| EKS
+    %% Path B Connections
+    PRIV_REPO -.->|Securely Cloned| JENKINS
+    PUB_REPO -.->|Cloned| JENKINS
+    JENKINS -.->|Pushes Image| ECR
+    JENKINS -.->|kubectl apply| EKS
     
-    BASTION -.->|"secure admin access"| EKS
+    %% Infrastructure Connections
+    BASTION -.->|SSH / Secure Admin Access| EKS
+    ESO -.->|Fetches via IRSA| SM
+    LBC -.->|Provisions & Manages| NLB_DASH
+    LBC -.->|Provisions & Manages| NLB_GRAF
     
-    ESO -.->|"fetches"| SM
-    BOTS -->|"reads/writes"| PG
-    BOTS -->|"POST place-trade"| NAT
-    NAT --> MT5
+    NLB_DASH -->|Routes Port 80 to 8000| DASH
+    NLB_GRAF -->|Routes Port 80 to 3000| GRAF
     
-    NLB1 --> DASH
-    NLB2 --> GRAF
-    PROM -.->|"scrapes"| BOTS
-    GRAF -.->|"queries"| PROM
+    BOTS -->|Reads/Writes Trades| PG
+    BOTS -->|Pulls Image| ECR
+    BOTS -->|Traffic| NAT
+    NAT -->|POST /place-trade| MT5
+    
+    PROM -.->|Scrapes /metrics| BOTS
+    GRAF -.->|Queries| PROM
 ```
 
 ---

@@ -1,123 +1,136 @@
-# AlgoFleet Orchestrator Flowchart
+# AlgoFleet Orchestrator — Detailed Flowcharts
 
-This flowchart demonstrates the end-to-end flow of the project, separating the infrastructure architecture from the data and trade flow.
+This document breaks down the architecture into distinct operational workflows, demonstrating how the system handles Day-0 provisioning, two distinct CI/CD pipelines (GitOps vs Traditional), and real-time trade execution.
 
-## 1. CI/CD & Deployment Flow (Dual-Repo Architecture)
+---
 
-```mermaid
-flowchart LR
-    DEV["👨‍💻 Developer"] -->|1. git push config| REPO["📦 Public DevOps Repo
-(algofleet-orchestrator)"]
-    DEV -->|2. git push code| PRIV_REPO["🔒 Private Strategy Repo
-(strategy-engine)"]
-    
-    subgraph "Private Repo CI/CD"
-        PRIV_REPO -->|Triggers| PRIV_GHA["⚙️ GitHub Actions
-(Syntax, Tests, Build)"]
-        PRIV_GHA -->|Build & Push Images| ECR["📦 ECR Registry"]
-    end
-    
-    subgraph "Public Repo CI/CD"
-        REPO -->|Triggers| PUB_GHA["⚙️ GitHub Actions
-(render-manifests)"]
-        PUB_GHA -->|Commit YAMLs| REPO
-    end
-    
-    subgraph "Jenkins Secure Bridge"
-        REPO -->|Checks out| JENKINS["⚙️ Jenkins CI/CD"]
-        PRIV_REPO -->|Securely Cloned| JENKINS
-        JENKINS -->|Alternative Build/Deploy| ECR
-    end
-    
-    REPO -->|Polls Git| ARGO["🐙 ArgoCD GitOps Controller"]
-    
-    subgraph "AWS EKS Cluster"
-        ARGO -->|Syncs Manifests| BOTS["🤖 Strategy Pods"]
-        BOTS -.->|Pulls Images| ECR
-    end
-```
-
-## 2. Secrets Management Flow
+## 1. Day-0 Infrastructure & Security (Ansible)
+Before any code is deployed, the environment must be secured. We never expose the Kubernetes control plane or worker nodes to the public internet.
 
 ```mermaid
 flowchart TD
-    SM["🔐 AWS Secrets Manager"]
+    ADMIN["👨‍🔧 System Administrator"]
     
-    subgraph "AWS EKS Cluster"
-        ESO["🔑 External Secrets Operator"]
-        K8S_SEC["📋 K8s Secret engine-config"]
-        BOTS["🤖 Strategy Pods"]
-    end
-    
-    ESO -->|Fetches via IRSA hourly| SM
-    ESO -->|Creates or Updates| K8S_SEC
-    K8S_SEC -->|Injected as ENV| BOTS
-```
-
-## 3. Trade Execution & Data Flow
-
-```mermaid
-flowchart TD
-    subgraph "AWS EKS Cluster"
-        BOTS["🤖 Strategy Pods Python Algorithms"]
-        PG["🗃️ PostgreSQL Trade Database"]
-        DASH["📊 Trade Dashboard FastAPI"]
-        PROM["📈 Prometheus Metrics"]
-        GRAF["📊 Grafana Dashboards"]
-    end
-    
-    MT5["💹 MT5 Bridge API Broker Server"]
-    
-    BOTS -->|1. Fetch Market Data and Send Trade| MT5
-    BOTS -->|2. Record Trade Result| PG
-    DASH -->|3. Query Status| BOTS
-    PROM -->|4. Scrape metrics| BOTS
-    GRAF -->|5. Visualize| PROM
-```
-
-## 4. Complete System Architecture with Bastion Host
-
-```mermaid
-flowchart LR
-    subgraph AWS["AWS Cloud"]
-        subgraph VPC["VPC"]
-            subgraph PUB["Public Subnets"]
-                NLB1["⚖️ NLB: Dashboard"]
-                NLB2["⚖️ NLB: Grafana"]
-                BASTION["🖥️ Bastion Host configured by Ansible"]
-            end
-            
-            subgraph PRIV["Private Subnets"]
-                subgraph EKS["☸️ EKS Cluster"]
-                    subgraph TRADING["NS: trading"]
-                        BOTS["🤖 Strategy Pods"]
-                        PG["🗃️ PostgreSQL"]
-                        DASH["📊 Dashboard"]
-                    end
-                    
-                    subgraph MON["NS: monitoring"]
-                        PROM["📈 Prometheus"]
-                        GRAF["📊 Grafana"]
-                    end
-                end
-                NAT["🔀 NAT Gateway"]
-            end
+    subgraph AWS["AWS Cloud (ap-south-1)"]
+        subgraph PUB["Public Subnet"]
+            BASTION["🖥️ Bastion Host\n(Ubuntu EC2)"]
         end
         
-        SM["🔐 Secrets Manager"]
-        ECR["📦 ECR"]
+        subgraph PRIV["Private Subnet"]
+            EKS["☸️ AWS EKS Cluster\n(Private Endpoint)"]
+        end
     end
     
-    MT5["💹 MT5 Bridge API"]
-    ADMIN["👨‍🔧 System Admin"]
+    ANSIBLE["⚙️ Ansible Playbook\n(setup-bastion.yml)"]
     
-    NLB1 --> DASH
-    NLB2 --> GRAF
-    BOTS --> NAT --> MT5
-    BOTS --> PG
-    BOTS -.-> ECR
-    TRADING -.-> SM
+    ADMIN -->|Runs Playbook| ANSIBLE
+    ANSIBLE -->|Installs Docker, AWS CLI, kubectl, Helm\nConfigures UFW Firewall| BASTION
+    ADMIN -->|Secure SSH Tunnel| BASTION
+    BASTION -->|Administers via kubectl| EKS
+```
+
+---
+
+## 2. Pipeline Option A: Modern GitOps (GitHub Actions + ArgoCD)
+This is the primary, highly-automated deployment path leveraging the dual-repository setup.
+
+```mermaid
+flowchart LR
+    DEV["👨‍💻 Developer"]
     
-    ADMIN -->|SSH Secure Access| BASTION
-    BASTION -->|kubectl / helm| EKS
+    subgraph PRIV_REPO["🔒 Private Strategy Repo"]
+        CODE["Proprietary Python Code"]
+        GHA_PRIV["⚙️ GH Actions\n(4 Workflows)"]
+    end
+    
+    subgraph PUB_REPO["📦 Public Orchestration Repo"]
+        CONFIG["variants.json"]
+        GHA_PUB["⚙️ GH Actions\n(render-manifests.yml)"]
+    end
+    
+    ECR["📦 AWS ECR"]
+    ARGO["🐙 ArgoCD\n(In EKS)"]
+    EKS["☸️ EKS Cluster"]
+
+    %% Flow Steps
+    DEV -->|1. Push Code| CODE
+    CODE -->|Triggers| GHA_PRIV
+    GHA_PRIV -->|2. Run Syntax & Execution Tests| GHA_PRIV
+    GHA_PRIV -->|3. Build & Push Image| ECR
+    
+    DEV -->|4. Push Config| CONFIG
+    CONFIG -->|Triggers| GHA_PUB
+    GHA_PUB -->|5. Generate K8s YAMLs| PUB_REPO
+    
+    PUB_REPO -->|6. Polls Every 3m| ARGO
+    ARGO -->|7. Syncs Manifests| EKS
+    EKS -.->|8. Pulls Image| ECR
+```
+
+---
+
+## 3. Pipeline Option B: Traditional Enterprise (Jenkins)
+As an alternative to GitOps, a centralized Jenkins server acts as a secure deployment bridge. This proves the ability to work in strict enterprise environments that avoid public GitHub Actions runners for proprietary IP.
+
+```mermaid
+flowchart TD
+    DEV["👨‍💻 Developer"]
+    
+    PRIV_REPO["🔒 Private Strategy Repo"]
+    PUB_REPO["📦 Public Orchestration Repo"]
+    
+    subgraph SECURE_ZONE["AWS Secure VPC"]
+        JENKINS["⚙️ Jenkins Server\n(Jenkinsfile)"]
+        ECR["📦 AWS ECR"]
+        EKS["☸️ EKS Cluster"]
+    end
+    
+    DEV -->|Pushes Updates| PRIV_REPO & PUB_REPO
+    
+    PUB_REPO -->|1. Clones Infrastructure| JENKINS
+    PRIV_REPO -->|2. Clones IP via Secure Token| JENKINS
+    
+    JENKINS -->|3. Generate YAMLs & Build Image| JENKINS
+    JENKINS -->|4. Push Image| ECR
+    JENKINS -->|5. kubectl apply| EKS
+```
+
+---
+
+## 4. Trade Execution & Observability Flow
+Once the pods are deployed via either pipeline, this is how they interact with the broker and the monitoring stack.
+
+```mermaid
+flowchart LR
+    subgraph EKS["AWS EKS Cluster"]
+        direction TB
+        
+        ESO["🔑 External Secrets Operator"]
+        K8S_SEC["📋 K8s Secret\n(engine-config)"]
+        
+        BOTS["🤖 Strategy Pods"]
+        PG["🗃️ PostgreSQL Database"]
+        
+        PROM["📈 Prometheus"]
+        GRAF["📊 Grafana"]
+    end
+    
+    SM["🔐 AWS Secrets Manager"]
+    NAT["🔀 NAT Gateway"]
+    MT5["💹 MT5 Bridge API (Broker)"]
+    
+    %% Secrets Flow
+    ESO -->|1. Fetches via IRSA| SM
+    ESO -->|2. Updates| K8S_SEC
+    K8S_SEC -->|3. Injected as ENV| BOTS
+    
+    %% Trade Flow
+    BOTS -->|4. Process Data & Generate Signals| BOTS
+    BOTS -->|5. POST /place-trade| NAT
+    NAT --> MT5
+    BOTS -->|6. Record Trade Result| PG
+    
+    %% Observability Flow
+    PROM -->|7. Scrape /metrics| BOTS
+    GRAF -->|8. Visualize Data| PROM
 ```
