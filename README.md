@@ -9,7 +9,7 @@
 ![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
 
-> **Production-grade algorithmic trading platform** — 13 live trading bots running as Kubernetes microservices on AWS EKS, placing real trades on MetaTrader 5 (MT5) with full GitOps automation, secrets management, observability, and zero manual deployments.
+> **Production-grade algorithmic trading platform** — live trading bots running as Kubernetes microservices on AWS EKS, placing real trades on MetaTrader 5 (MT5) with full GitOps automation, secrets management, observability, and zero manual deployments.
 
 ---
 
@@ -39,7 +39,7 @@
 
 ## 🎯 Executive Summary
 
-AlgoFleet Orchestrator is a **fully automated, cloud-native algorithmic trading platform** built to demonstrate production-level DevOps engineering. It runs **13 independent trading strategy bots** as Kubernetes pods on AWS EKS. Each bot implements a different trading strategy (Strategy 17, 18.1, 21) across multiple financial instruments (BTCUSD, XAUUSD, EURUSD, USDJPY, USOIL, Forex).
+AlgoFleet Orchestrator is a **fully automated, cloud-native algorithmic trading platform** built to demonstrate production-level DevOps engineering. It runs **independent trading strategy pods** as Kubernetes pods on AWS EKS. Each bot implements a different trading strategy (various proprietary trading strategies) across multiple financial instruments (various financial instruments).
 
 Every bot connects to a **MetaTrader 5 bridge API** to place real trades, reads market signals using Python algorithms, records every trade in an internal **PostgreSQL database**, and is monitored via a **Grafana/Prometheus observability stack**.
 
@@ -51,12 +51,14 @@ The entire platform is managed using **GitOps principles** — the Git repositor
 
 ```mermaid
 flowchart LR
-    DEV["fa:fa-user Developer"] -->|"git push"| REPO["fa:fa-box Git Repository"]
+    DEV["fa:fa-user Developer"] -->|"git push"| REPO["fa:fa-box Public Git Repository"]
 
     subgraph AWS["AWS Cloud (ap-south-1)"]
         direction TB
         SM["fa:fa-lock Secrets Manager"]
         ECR["fa:fa-box ECR Registry"]
+        BASTION["fa:fa-server Bastion Host
+(Configured via Ansible)"]
 
         subgraph VPC["VPC (10.0.0.0/16)"]
             direction TB
@@ -91,16 +93,22 @@ flowchart LR
 
     MT5["MT5 Bridge API
 Account: <YOUR_ACCOUNT_ID>"]
+    PRIV_REPO["fa:fa-lock Private Strategy Engine Repo"]
 
-    REPO -->|"triggers"| GHA["GitHub Actions"]
-    GHA -->|"build/push"| ECR
-    GHA -.->|"commit manifests"| REPO
+    JENKINS["fa:fa-cog Jenkins CI/CD"]
+    
+    REPO -->|"pulls orchestration"| JENKINS
+    PRIV_REPO -->|"pulls proprietary IP"| JENKINS
+    JENKINS -->|"build/push"| ECR
+    JENKINS -.->|"commit manifests"| REPO
     REPO -.->|"polls"| ARGO
     ARGO -->|"applies"| EKS
     
+    BASTION -.->|"secure admin access"| EKS
+    
     ESO -.->|"fetches"| SM
     BOTS -->|"reads/writes"| PG
-    BOTS -->|"POST /place-trade"| NAT
+    BOTS -->|"POST place-trade"| NAT
     NAT --> MT5
     
     NLB1 --> DASH
@@ -171,7 +179,7 @@ All AWS infrastructure is defined as code in the `terraform/` directory. This me
 
 **Why ECR over Docker Hub:** ECR is AWS-native, meaning EKS nodes pull images using their existing IAM role — no external authentication needed. It is in the same region as the cluster, so pulls are fast (within the AWS backbone, no cross-internet charges). ECR also scans images for vulnerabilities on push (`scan_on_push = true`).
 
-- `strategy-engine` — image for all 13 bots. One image, 13 bots — the specific strategy is selected by the `STRATEGY_SCRIPT` env variable.
+- `strategy-engine` — image for all strategy pods. One image, strategy pods — the specific strategy is selected by the `STRATEGY_SCRIPT` env variable.
 - `trade-dashboard` — image for the FastAPI status dashboard.
 
 #### AWS Secrets Manager
@@ -211,7 +219,7 @@ All AWS infrastructure is defined as code in the `terraform/` directory. This me
 
 **Why containers:** Each strategy bot is a Python application with dependencies (pandas, numpy, MT5 libraries, etc.). Containers package code AND dependencies together into a single immutable unit. This eliminates "works on my machine" problems.
 
-**Single shared image design:** All 13 bots use the SAME `strategy-engine` Docker image. The `entrypoint.sh` reads the `STRATEGY_SCRIPT` environment variable to decide which Python file to run. This means pushing one new image updates all 13 bots on next rollout.
+**Single shared image design:** All strategy pods use the SAME `strategy-engine` Docker image. The `entrypoint.sh` reads the `STRATEGY_SCRIPT` environment variable to decide which Python file to run. This means pushing one new image updates all strategy pods on next rollout.
 
 **How `ENGINE_CONFIG_JSON` flows into Python:** The Docker `entrypoint.sh` reads the `ENGINE_CONFIG_JSON` environment variable and writes its contents to `/app/Live/engine.json`. The Python code in `engine/config.py` then reads this file. Individual config values are also available as direct environment variables, which take absolute precedence.
 
@@ -258,7 +266,7 @@ The AWS Load Balancer Controller creates modern **Network Load Balancers (NLBs)*
 
 **How each bot works:**
 1. Pod starts, `entrypoint.sh` writes `ENGINE_CONFIG_JSON` environment variable to `/app/Live/engine.json`
-2. The specific Python strategy file (e.g., `Live/Strategy 17/s17_m1m2_v1_forex_sell.py`) executes
+2. The specific Python strategy file (e.g., `strategy.py`) executes
 3. The strategy connects to the MT5 Bridge API using credentials from the injected secret
 4. It fetches market data (OHLC candles) from MT5 via the bridge
 5. It runs the strategy algorithm to generate buy/sell signals
@@ -286,7 +294,7 @@ The AWS Load Balancer Controller creates modern **Network Load Balancers (NLBs)*
 
 #### Trade Dashboard
 
-FastAPI application exposed via an internet-facing NLB on port 80 → 8000. Shows which of the 13 bots are alive and their trade registration status.
+FastAPI application exposed via an internet-facing NLB on port 80 → 8000. Shows which of the strategy pods are alive and their trade registration status.
 
 ---
 
@@ -330,17 +338,25 @@ This means:
 3. `aws-load-balancer-controller` — AWS LBC via Helm from eks-charts repo
 4. `external-secrets` — ESO via Helm from external-secrets repo
 
-#### GitHub Actions — CI/CD Pipeline
+#### Jenkins — CI/CD Pipeline & Private Strategy Integration
 
-**Trigger:** Push to `main` AND `variants/variants.json` was changed.
+**Trigger:** Commit to the repository or scheduled builds.
 
-**Why this trigger:** `variants.json` is the master config for all strategies. When a new strategy is added, CI auto-generates the Kubernetes YAML. Engineers only edit `variants.json` — they never write raw Kubernetes YAML manually.
+**Why Jenkins over standard GitHub Actions:** The project separates the public orchestration infrastructure from the proprietary trading algorithms. Jenkins handles the secure integration of these two parts:
+1. **Checkout Public DevOps Repo:** Pulls this infrastructure repository.
+2. **Checkout Private Strategy Engine:** Securely pulls the proprietary trading code from the main private strategy repository (`strategy-engine`) using dedicated credentials. This ensures the trading IP remains completely hidden.
+3. **Generate K8s Manifests:** Runs a Python script to dynamically generate Kubernetes deployment YAMLs for each strategy.
+4. **Build & Push:** Packages the private strategy engine into a secure Docker image and pushes it to AWS ECR.
+5. **Deploy:** Can either directly apply to EKS or let ArgoCD pick up the generated manifests for GitOps synchronization.
 
-**Pipeline steps:**
-1. Checkout repository
-2. Run `python3 scripts/gen_k8s_deployments.py` — reads `variants.json`, generates deployment YAMLs in `kubernetes/strategies/`
-3. `git commit` + `git push` — commits generated YAMLs back to the repo
-4. ArgoCD detects the new commit (within 3 minutes) and syncs to EKS
+#### Ansible — Infrastructure Configuration
+
+**Resource:** `ansible/playbooks/setup-bastion.yml`
+
+**Why Ansible:** We use Ansible to configure a secure **Bastion Host (Jump Server)**. Instead of exposing the EKS cluster's API directly to the open internet for administration, the Bastion host acts as a secure gateway.
+- **Automated Provisioning:** The Ansible playbook installs all necessary prerequisites on the Ubuntu machine (Docker, AWS CLI v2, kubectl, Helm).
+- **Security:** It configures the UFW firewall to strictly allow only necessary ports (22, 80, 443).
+- Administrators SSH into this Bastion host, and from there, securely interact with the private subnets of the EKS cluster.
 
 ---
 
@@ -350,13 +366,13 @@ This means:
 1. MARKET TICK
    MT5 platform (broker server)
    → Bot connects via MT5 Bridge API (HTTP/REST)
-   → Fetches OHLC candle data for the configured instrument (e.g., XAUUSD 1H)
+   → Fetches OHLC candle data for the configured instrument (e.g., a specific timeframe)
 
 2. SIGNAL GENERATION
-   Python strategy algorithm (e.g., s17_m2m3_v4_xauusd_buy.py)
+   Python strategy algorithm (e.g., strategy.py)
    → Calculates indicators (EMA, RSI, momentum, etc.)
-   → Detects setup conditions (M2 pattern on higher timeframe)
-   → Waits for entry confirmation (M3 pattern on lower timeframe)
+   → Detects setup conditions (pattern on a higher timeframe)
+   → Waits for entry confirmation (pattern on a lower timeframe)
 
 3. TRADE EXECUTION
    Bot sends HTTP POST to MT5 Bridge URL
@@ -403,16 +419,16 @@ algofleet-orchestrator/
 │
 ├── docker/
 │   ├── strategy-engine/
-│   │   ├── Dockerfile                     ← Base image for ALL 13 bots
+│   │   ├── Dockerfile                     ← Base image for ALL strategy pods
 │   │   └── entrypoint.sh                  ← Writes ENGINE_CONFIG_JSON to /app/Live/engine.json
 │   └── trade-dashboard/
 │       └── Dockerfile                     ← FastAPI dashboard image
 │
 ├── strategy-engine/                       ← Git submodule: actual Python trading code
 │   └── Live/
-│       ├── Strategy 17/                   ← s17 momentum strategies
-│       ├── Strategy 18/                   ← s18 multi-timeframe strategies
-│       ├── Strategy 21/                   ← s21 strategies
+│       ├──                    ← proprietary strategies
+│       ├──                    ← proprietary strategies
+│       ├──                    ← proprietary strategies
 │       ├── trade_db.py                    ← PostgreSQL integration layer
 │       └── engine/
 │           └── config.py                  ← Config resolution: Env > JSON > Default
@@ -431,8 +447,8 @@ algofleet-orchestrator/
 │   └── strategies/
 │       ├── aws-secret-store.yaml          ← ClusterSecretStore → AWS Secrets Manager
 │       ├── engine-external-secret.yaml    ← ExternalSecret: algofleet/engine-config
-│       ├── s17-m1m2-v1-forex-sell/deployment.yaml
-│       ├── s17-m1m2-v4-btcusd-buy/deployment.yaml
+│       ├── strategy-1/deployment.yaml
+│       ├── strategy-2/deployment.yaml
 │       ├── ... (11 more strategy directories, auto-generated)
 │       └── trade-dashboard/
 │           ├── deployment.yaml
@@ -449,24 +465,6 @@ algofleet-orchestrator/
 
 ---
 
-## 🤖 Strategy Bots — Complete List
-
-| Bot Name | Strategy | Instrument | Direction | Timeframes |
-|---|---|---|---|---|
-| `s17-m1m2-v1-forex-sell` | S17 M1→M2 V1 | Forex (USDJPY, EURUSD, USOIL) | SELL | M1 entry → M2 confirm |
-| `s17-m1m2-v4-btcusd-buy` | S17 M1→M2 V4 | BTCUSD | BUY | M1 entry → M2 confirm |
-| `s17-m2m3-v4-forex-buy` | S17 M2→M3 V4 | Forex (USDJPY, EURUSD, USOIL) | BUY | M2 setup → M3 entry |
-| `s17-m2m3-v4-xauusd-buy` | S17 M2→M3 V4 | XAUUSD (Gold) | BUY | M2 setup → M3 entry |
-| `s17-m3m2-v1-btcusd-sell` | S17 M3→M2 V1 | BTCUSD | SELL | M3 setup → M2 entry |
-| `s17-m3m2-v1-xauusd-sell` | S17 M3→M2 V1 | XAUUSD (Gold) | SELL | M3 setup → M2 entry |
-| `s18-1-1h5min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 1H setup → 5min entry + trailing |
-| `s18-1-1h5min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 1H setup → 5min entry + trailing |
-| `s18-1-2h15min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 2H setup → 15min trailing |
-| `s18-1-2h15min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 2H setup → 15min trailing |
-| `s18-1-4h15min-btcusd` | S18.1 | BTCUSD | BUY + SELL | 4H setup → 15min entry |
-| `s18-1-4h15min-xauusd` | S18.1 | XAUUSD (Gold) | BUY + SELL | 4H setup → 15min entry |
-| `s21-btcusd` | S21 | BTCUSD | BUY + SELL | Multi-timeframe |
-
 ---
 
 ## 🛠️ Tech Stack Table
@@ -477,7 +475,8 @@ algofleet-orchestrator/
 | Container Orchestration | Kubernetes (EKS) | 1.34 | Run and manage all pods |
 | Infrastructure as Code | Terraform | — | Provision all AWS resources |
 | GitOps | ArgoCD | v2.x | Sync Git state to Cluster |
-| CI/CD | GitHub Actions | — | Auto-generate manifests, push images |
+| Configuration Management | Ansible | — | Setup Bastion Host |
+| CI/CD Pipeline | Jenkins | — | Build images and integrate private strategy repo |
 | Container Registry | Amazon ECR | — | Store Docker images |
 | Load Balancer | AWS NLB | — | Expose services to internet |
 | Secrets Management | AWS Secrets Manager | — | Store MT5 creds and API tokens |
@@ -587,13 +586,13 @@ bash scripts/setup-secrets.sh
 ```bash
 kubectl apply -f kubernetes/namespaces.yaml
 kubectl apply -f kubernetes/argocd/algofleet-app.yaml
-# ArgoCD syncs all 13 bots + PostgreSQL automatically
+# ArgoCD syncs all strategy pods + PostgreSQL automatically
 ```
 
 ### Step 9 — Verify
 
 ```bash
-kubectl get pods -n trading      # 13 bots + postgres-0 = Running
+kubectl get pods -n trading      # strategy pods + postgres-0 = Running
 kubectl get pods -n monitoring   # prometheus + grafana = Running
 kubectl get svc -n trading       # trade-dashboard has EXTERNAL-IP
 kubectl get svc -n monitoring    # prometheus-grafana has EXTERNAL-IP
@@ -608,11 +607,11 @@ kubectl get svc -n monitoring    # prometheus-grafana has EXTERNAL-IP
 2. **Commit and push:**
    ```bash
    git add variants/variants.json
-   git commit -m "feat: add strategy 22 for ETHUSD"
+   git commit -m "feat: add strategy 22 for a financial instrument"
    git push origin main
    ```
 
-3. **GitHub Actions automatically** runs `gen_k8s_deployments.py`, generates `kubernetes/strategies/s22-ethusd/deployment.yaml`, commits and pushes back to `main`.
+3. **GitHub Actions automatically** runs `gen_k8s_deployments.py`, generates `kubernetes/strategies/new-strategy/deployment.yaml`, commits and pushes back to `main`.
 
 4. **ArgoCD automatically** (within 3 minutes) detects the new manifest and creates the new bot pod. It starts trading immediately.
 
