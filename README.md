@@ -50,84 +50,63 @@ The entire platform is managed using **GitOps principles** — the Git repositor
 ## 🏗️ Architecture Diagram
 
 ```mermaid
-flowchart TD
-    DEV["fa:fa-user Developer\nLocal Machine"]
+flowchart LR
+    DEV["fa:fa-user Developer"] -->|"git push"| REPO["fa:fa-box Git Repository"]
 
-    subgraph GITHUB["GitHub"]
-        REPO["fa:fa-box algofleet-orchestrator\nGit Repository"]
-        GHA["fa:fa-cog GitHub Actions\nCI/CD Pipeline"]
-    end
+    subgraph AWS["AWS Cloud (ap-south-1)"]
+        direction TB
+        SM["fa:fa-lock Secrets Manager"]
+        ECR["fa:fa-box ECR Registry"]
 
-    subgraph AWS["AWS Cloud — Region: ap-south-1"]
-        S3["fa:fa-database S3 Bucket\nTerraform State Backend"]
-        SM["fa:fa-lock Secrets Manager\nalgofleet/engine-config"]
-        ECR1["fa:fa-box ECR: strategy-engine\nDocker Image"]
-        ECR2["fa:fa-box ECR: trade-dashboard\nDocker Image"]
-
-        subgraph VPC["VPC — algofleet-vpc  10.0.0.0/16"]
-            NAT["NAT Gateway\nOutbound Internet for Private Nodes"]
-
-            subgraph PUB["Public Subnets — 10.0.101.0/24  10.0.102.0/24"]
-                NLB1["NLB: Trade Dashboard\nPort 80 to 8000"]
-                NLB2["NLB: Grafana\nPort 80 to 3000"]
+        subgraph VPC["VPC (10.0.0.0/16)"]
+            direction TB
+            subgraph PUB["Public Subnets"]
+                NLB1["NLB: Dashboard"]
+                NLB2["NLB: Grafana"]
             end
 
-            subgraph PRIV["Private Subnets — 10.0.1.0/24  10.0.2.0/24"]
-                subgraph EKS["EKS Cluster — algofleet-eks  v1.34"]
-                    subgraph NODES["Managed Node Group — 4x t3.medium  min=2 max=6"]
+            subgraph PRIV["Private Subnets"]
+                subgraph EKS["EKS Cluster (v1.34)"]
+                    direction LR
+                    subgraph NS_TRADING["NS: trading"]
+                        BOTS["Strategy Pods"]
+                        PG["PostgreSQL 15"]
+                        DASH["Trade Dashboard"]
+                    end
 
-                        subgraph NS_ARGOCD["Namespace: argocd"]
-                            ARGO["ArgoCD\nGitOps Controller"]
-                        end
+                    subgraph NS_MON["NS: monitoring"]
+                        PROM["Prometheus"]
+                        GRAF["Grafana"]
+                    end
 
-                        subgraph NS_ADDONS["Namespace: kube-system and external-secrets"]
-                            LBC["AWS Load Balancer Controller v1.7.1"]
-                            ESO["External Secrets Operator v0.9.11"]
-                            EBS_CSI["EBS CSI Driver"]
-                            GP3["gp3 StorageClass"]
-                        end
-
-                        subgraph NS_TRADING["Namespace: trading"]
-                            BOTS["13 Strategy Bot Pods\ns17 s18 s21 series"]
-                            PG["PostgreSQL 15\nStatefulSet\n5Gi gp3 EBS Volume"]
-                            DASH["Trade Dashboard\nFastAPI"]
-                            K8S_SEC["K8s Secret: engine-config\nCreated by ESO"]
-                        end
-
-                        subgraph NS_MON["Namespace: monitoring"]
-                            PROM["Prometheus\nMetrics + TSDB"]
-                            GRAF["Grafana\nDashboards"]
-                        end
+                    subgraph NS_SYS["NS: argocd & addons"]
+                        ARGO["ArgoCD"]
+                        ESO["External Secrets"]
                     end
                 end
+                NAT["NAT Gateway"]
             end
         end
     end
 
-    MT5["MT5 Bridge API\nexness-bridge-mt5\nAccount: 277746877"]
+    MT5["MT5 Bridge API
+Account: <YOUR_ACCOUNT_ID>"]
 
-    DEV -->|"git push"| REPO
-    REPO -->|"on variants.json change"| GHA
-    GHA -->|"docker build and push"| ECR1
-    GHA -->|"generate manifests and commit"| REPO
-    REPO -->|"ArgoCD polls every 3min"| ARGO
-    ARGO -->|"kubectl apply"| NS_TRADING
-    ARGO -->|"helm install"| NS_ADDONS
-    ARGO -->|"helm install"| NS_MON
-    ESO -->|"GetSecretValue every 1h via IRSA"| SM
-    SM -->|"secret value"| K8S_SEC
-    K8S_SEC -->|"ENGINE_CONFIG_JSON env var"| BOTS
-    BOTS -->|"pull image on startup"| ECR1
-    BOTS -->|"read and write trades"| PG
-    BOTS -->|"POST place-trade"| MT5
-    NLB1 -->|"route"| DASH
-    NLB2 -->|"route"| GRAF
-    LBC -->|"provision and manage"| NLB1
-    LBC -->|"provision and manage"| NLB2
-    EBS_CSI -->|"provision 5Gi volume"| PG
-    PROM -->|"scrape metrics"| BOTS
-    GRAF -->|"query"| PROM
-    NAT -->|"outbound internet"| MT5
+    REPO -->|"triggers"| GHA["GitHub Actions"]
+    GHA -->|"build/push"| ECR
+    GHA -.->|"commit manifests"| REPO
+    REPO -.->|"polls"| ARGO
+    ARGO -->|"applies"| EKS
+    
+    ESO -.->|"fetches"| SM
+    BOTS -->|"reads/writes"| PG
+    BOTS -->|"POST /place-trade"| NAT
+    NAT --> MT5
+    
+    NLB1 --> DASH
+    NLB2 --> GRAF
+    PROM -.->|"scrapes"| BOTS
+    GRAF -.->|"queries"| PROM
 ```
 
 ---
@@ -206,7 +185,7 @@ All AWS infrastructure is defined as code in the `terraform/` directory. This me
 {
   "BOT_TOKEN": "<telegram-bot-token for trade alerts>",
   "CHAT_ID": "<telegram-chat-id>",
-  "MT5_BRIDGE_URL": "https://exness-bridge-mt5.pickleballify.com/277746877/demo",
+  "MT5_BRIDGE_URL": "<MT5_BRIDGE_URL>",
   "MT5_API_KEY": "<api-key>",
   "TRADE_DB_URL": "postgresql://algofleet:pass@postgres.trading.svc.cluster.local:5432/algofleet"
 }
@@ -381,10 +360,10 @@ This means:
 
 3. TRADE EXECUTION
    Bot sends HTTP POST to MT5 Bridge URL
-   URL: https://exness-bridge-mt5.pickleballify.com/277746877/demo
+   URL: <MT5_BRIDGE_URL>
    Payload: { symbol, action, volume, sl, tp, magic_number }
    → MT5 bridge forwards the order to the Exness MT5 server
-   → Real trade is opened on account 277746877
+   → Real trade is opened on the configured account
 
 4. PERSISTENCE
    Bot records trade details (ticket, symbol, direction, entry price, SL, TP)

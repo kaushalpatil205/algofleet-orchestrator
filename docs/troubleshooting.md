@@ -9,7 +9,7 @@ Welcome to the troubleshooting guide for the AlgoFleet Orchestrator. This docume
 | 1 | CreateContainerConfigError on strategy pods | Pods failing at launch due to missing secret | Wait for External Secrets sync, verify with `kubectl get externalsecret` |
 | 2 | Postgres pod in CrashLoopBackOff | Data directory conflict at `/var/lib/postgresql/data` | Set PGDATA env var to `/var/lib/postgresql/data/pgdata`, recreate StatefulSet |
 | 3 | Bots recovering ghost trades | Bots trading on CockroachDB instead of Postgres | Inject `TRADE_DB_URL` into all deployment YAMLs pointing to internal Postgres |
-| 4 | Wrong MT5 account | Bots trading on incorrect MT5 account (463858748 vs 277746877) | Update secret in AWS Secrets Manager, restart pods |
+| 4 | Wrong MT5 account | Bots trading on incorrect MT5 account (<INCORRECT_ACCOUNT_ID> vs <CORRECT_ACCOUNT_ID>) | Update secret in AWS Secrets Manager, restart pods |
 | 5 | Prometheus/Grafana ArgoCD SyncFailed | CRD too large for `kubectl apply` | Use `kubectl apply --server-side` on unzipped chart CRDs |
 | 6 | Grafana blank dark screen | Traffic not routed correctly via Classic Load Balancer | Add `nlb` annotation to Grafana Helm values |
 | 7 | Grafana NLB resolving to internal IPs | DNS timeout due to internal-only NLB | Add `internet-facing` annotation to NLB service |
@@ -72,7 +72,7 @@ env:
 **Key Lesson Learned**: Avoid hardcoded fallbacks in production code; enforce explicit configuration via environment variables.
 
 ### 4. Wrong MT5 account
-**Symptom**: The bots were executing trades on MT5 account `463858748` instead of the expected `277746877`.
+**Symptom**: The bots were executing trades on MT5 account `<INCORRECT_ACCOUNT_ID>` instead of the expected `<CORRECT_ACCOUNT_ID>`.
 **Root Cause**: The secret in AWS Secrets Manager contained an outdated `MT5_BRIDGE_URL`.
 **Commands to Diagnose**:
 Verify the injected secret contents (if possible/safe):
