@@ -3,8 +3,6 @@ kind: Service
 metadata:
   name: trade-dashboard
   namespace: trading
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
 spec:
   selector:
     app: trade-dashboard
@@ -12,4 +10,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8000
-  type: LoadBalancer
+  type: ClusterIP

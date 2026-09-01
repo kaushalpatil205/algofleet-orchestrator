@@ -156,11 +156,10 @@ Self-Hosted Pipeline"]
     %% Infrastructure Connections
     BASTION -.->|SSH / Secure Admin Access| EKS
     ESO -.->|Fetches via IRSA| SM
-    LBC -.->|Provisions & Manages| NLB_DASH
-    LBC -.->|Provisions & Manages| NLB_GRAF
+    LBC -.->|Provisions Ingress| ALB
     
-    NLB_DASH -->|Routes Port 80 to 8000| DASH
-    NLB_GRAF -->|Routes Port 80 to 3000| GRAF
+    ALB -->|Routes /dashboard| DASH
+    ALB -->|Routes /grafana| GRAF
     
     BOTS -->|Reads/Writes Trades| PG
     BOTS -->|Pulls Image| ECR
@@ -537,7 +536,7 @@ algofleet-orchestrator/
 | Configuration Management | Ansible | — | Setup Bastion Host |
 | CI/CD Pipeline | Jenkins & GitHub Actions | — | Jenkins (Builds) & GH Actions (Manifests) |
 | Container Registry | Amazon ECR | — | Store Docker images |
-| Load Balancer | AWS NLB | — | Expose services to internet |
+| Load Balancer | AWS ALB (Ingress) | — | Unified internet exposure and routing |
 | Secrets Management | AWS Secrets Manager | — | Store MT5 creds and API tokens |
 | Secrets Bridge | External Secrets Operator | 0.9.11 | AWS Secrets Manager to K8s Secrets |
 | Storage | AWS EBS gp3 | — | Persistent storage for PostgreSQL |

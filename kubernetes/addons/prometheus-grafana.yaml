@@ -18,13 +18,7 @@ spec:
             port: 80
             targetPort: 3000
 
-            type: LoadBalancer
-            labels:
-              force-sync: "true"
-
-            annotations:
-              service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-              service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+            type: ClusterIP
 
 
   destination:
