@@ -386,7 +386,7 @@ This means:
 - **Drift detection** — ArgoCD tells you if cluster differs from Git
 
 **ArgoCD Applications:**
-1. `algofleet-strategies` — all 13 bot Deployments + PostgreSQL StatefulSet + External Secrets resources
+1. `algofleet-strategies` — all strategy pod Deployments + PostgreSQL StatefulSet + External Secrets resources
 2. `prometheus-grafana` — full monitoring stack via Helm from prometheus-community repo
 3. `aws-load-balancer-controller` — AWS LBC via Helm from eks-charts repo
 4. `external-secrets` — ESO via Helm from external-secrets repo
@@ -473,7 +473,7 @@ algofleet-orchestrator/
 │   └── setup-secrets.sh                   ← Updates AWS Secrets Manager with MT5 credentials
 │
 ├── variants/
-│   └── variants.json                      ← Master config: all 13 strategy definitions
+│   └── variants.json                      ← Master config: all strategy definitions
 │
 ├── docker/
 │   ├── strategy-engine/
