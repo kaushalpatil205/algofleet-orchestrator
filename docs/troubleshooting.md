@@ -21,7 +21,7 @@ Welcome to the troubleshooting guide for the AlgoFleet Orchestrator. This docume
 ## Detailed Issues
 
 ### 1. CreateContainerConfigError on ALL strategy pods at launch
-**Symptom**: All 13 strategy bot pods entered a `CreateContainerConfigError` state immediately after creation.
+**Symptom**: All strategy bot pods entered a `CreateContainerConfigError` state immediately after creation.
 **Root Cause**: The pods referenced a `secretKeyRef` that did not exist yet because the External Secrets Operator hadn't finished syncing `algofleet/engine-config` from AWS Secrets Manager.
 **Commands to Diagnose**:
 ```bash
@@ -62,7 +62,7 @@ Check pod environment variables:
 kubectl exec -it <bot-pod> -n trading -- env | grep DB
 ```
 **Commands to Fix**:
-Inject the explicit DB URL into all 13 strategy deployment manifests:
+Inject the explicit DB URL into all strategy deployment manifests:
 ```yaml
 env:
   - name: TRADE_DB_URL
