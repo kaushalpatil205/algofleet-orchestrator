@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 
-VARIANTS_PATH = "variants/variants.json"
+VARIANTS_PATH = "../../variants/variants.json"
 BASE_YAML_PATH = "kubernetes/templates/strategy-deployment.yaml"
 ECR_REGISTRY = "561789488706.dkr.ecr.ap-south-1.amazonaws.com"
 
@@ -16,7 +16,7 @@ def generate():
     for family, variant_list in variants.items():
         for v in variant_list:
             name = v["file"].replace("_", "-")
-            out_dir = f"kubernetes/strategies/{name}"
+            out_dir = f"../kubernetes/strategies/{name}"
             os.makedirs(out_dir, exist_ok=True)
 
             yaml = base_yaml \

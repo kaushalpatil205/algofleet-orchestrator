@@ -1,0 +1,51 @@
+name: Deploy to ECS Fargate (Serverless)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'serverless-ecs-architecture/**'
+      - 'variants/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-ecs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: arn:aws:iam::561789488706:role/algofleet-github-actions-v2
+          aws-region: ap-south-1
+
+      - name: Generate ECS Task Definitions
+        run: |
+          python serverless-ecs-architecture/scripts/gen_ecs_tasks.py
+
+      - name: Register and Update ECS Services
+        run: |
+          for task_file in serverless-ecs-architecture/ecs_tasks/*.json; do
+            # 1. Register the new Task Definition
+            echo "Registering $task_file..."
+            NEW_REVISION=$(aws ecs register-task-definition --cli-input-json file://$task_file --query 'taskDefinition.taskDefinitionArn' --output text)
+            
+            # Extract family name from the file name
+            FAMILY=$(basename $task_file -task.json)
+            
+            # 2. Update the ECS Service to use the new revision
+            # Note: For strict singletons (trading bots), we ensure desired-count is 1
+            echo "Updating service algofleet-strategy-$FAMILY to use $NEW_REVISION"
+            aws ecs update-service \
+              --cluster algofleet-cluster \
+              --service "algofleet-strategy-$FAMILY" \
+              --task-definition $NEW_REVISION \
+              --desired-count 1 \
+              --capacity-provider-strategy capacityProvider=FARGATE_SPOT,weight=100
+          done
