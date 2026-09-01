@@ -8,66 +8,50 @@ While Version 1 prioritizes enterprise-grade Kubernetes scaling, this version is
 
 ```mermaid
 flowchart TB
-    %% Actors and Source Control
     DEV["👨‍💻 Developer"]
     
-    subgraph GIT["GitHub Repository"]
-        direction LR
+    subgraph GIT ["GitHub Repository"]
         CONFIG["variants.json"]
-        GHA["⚙️ GH Actions (deploy-ecs.yml)"]
+        GHA["⚙️ GH Actions"]
     end
     
-    subgraph AWS["☁️ AWS Cloud Infrastructure (ap-south-1)"]
-        direction TB
+    subgraph AWS ["☁️ AWS Cloud Infrastructure (ap-south-1)"]
         SM["🔐 AWS Secrets Manager"]
         ECR["📦 AWS ECR (Docker Registry)"]
-        EFS["💾 AWS EFS (Serverless File System)"]
+        EFS["💾 AWS EFS (Serverless File)"]
         
-        subgraph VPC["🌐 VPC (10.0.0.0/16)"]
-            direction TB
-            
-            subgraph PUB_SUB["Public Subnets (Auto-Assign IPs enabled)"]
-                direction TB
-                subgraph ECS["☁️ AWS ECS Fargate Cluster"]
-                    direction LR
-                    
-                    subgraph TASK_DB["PostgreSQL Task"]
-                        PG["🗃️ Postgres Container"]
-                    end
-                    
-                    subgraph TASK_BOTS["Strategy Tasks (Fargate SPOT)"]
-                        BOTS["🤖 Python Bots"]
-                    end
-                    
-                    subgraph TASK_DASH["Dashboard Task"]
-                        direction TB
-                        CF["🛡️ Cloudflare Sidecar"]
-                        DASH["📊 FastAPI App"]
-                    end
+        subgraph VPC ["🌐 VPC (10.0.0.0/16) - Public Subnets"]
+            subgraph ECS ["☁️ AWS ECS Fargate Cluster"]
+                PG["🗃️ Postgres Task"]
+                BOTS["🤖 Strategy Tasks (Spot)"]
+                
+                subgraph DASH_TASK ["Dashboard Task"]
+                    CF["🛡️ Cloudflare Sidecar"]
+                    DASH["📊 FastAPI App"]
                 end
             end
         end
     end
 
-    MT5["💹 MT5 Bridge API (Broker)"]
+    MT5["💹 MT5 Bridge API"]
     CF_EDGE["☁️ Cloudflare Global Edge"]
     USER["👤 Admin"]
 
-    %% Flow Connections
     DEV -->|1. Pushes Config| CONFIG
     CONFIG -->|2. Triggers| GHA
     
     GHA -->|3. Pushes Image| ECR
-    GHA -->|4. aws ecs update-service| ECS
+    GHA -->|4. Updates Service| BOTS
     
-    PG <-->|Mounts Persistent Storage| EFS
-    BOTS -->|Reads/Writes Trades| PG
-    BOTS -.->|Task Role Fetches| SM
-    BOTS -->|Outbound HTTPS| MT5
+    PG <-->|Mounts Storage| EFS
+    BOTS -->|Reads/Writes| PG
+    BOTS -.->|Fetches| SM
+    BOTS -->|HTTPS POST| MT5
     
     CF -->|Proxies localhost| DASH
-    CF <-->|Establishes Secure Tunnel| CF_EDGE
-    USER -->|Accesses Dashboard| CF_EDGE
+    CF <-->|Secure Tunnel| CF_EDGE
+    USER -->|Accesses| CF_EDGE
+
 ```
 
 ## 💰 The Cost Optimization Strategy
