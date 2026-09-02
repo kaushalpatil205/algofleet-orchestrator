@@ -1,6 +1,6 @@
 # AlgoFleet Orchestrator (Dual-Architecture Portfolio)
 
-Welcome to the **AlgoFleet Orchestrator**. This repository contains the infrastructure and deployment automation for a fleet of algorithmic trading microservices.
+Welcome to the **AlgoFleet Orchestrator**. This repository contains the infrastructure and deployment automation for a fleet of algorithmic task microservices.
 
 To demonstrate architectural maturity, cloud economics, and mastery of multiple DevOps toolchains, I have built and maintained **two distinct deployment targets** side-by-side within this single repository.
 
@@ -23,7 +23,7 @@ This folder contains Version 2 of the project. It is designed for a lean startup
 * **Cost:** ~$30 / month
 
 ## 📁 Shared Configuration
-Both architectures share the same proprietary Python trading bots (via Git Submodules) and the exact same configuration payload. 
+Both architectures share the same proprietary Python task processors (via Git Submodules) and the exact same configuration payload. 
 
 * `variants/variants.json` — The master configuration file. When this file is edited, GitHub Actions utilizes path-based triggers to dynamically update **both** the Kubernetes YAMLs and the ECS Task Definitions simultaneously!
 

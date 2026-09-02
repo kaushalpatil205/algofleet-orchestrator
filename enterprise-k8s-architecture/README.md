@@ -9,7 +9,7 @@
 ![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
 
-> **Production-grade algorithmic trading platform** — live trading bots running as Kubernetes microservices on AWS EKS, placing real trades on MetaTrader 5 (MT5) with full GitOps automation, secrets management, observability, and zero manual deployments.
+> **Production-grade Distributed Task System** — live worker processes running as Kubernetes microservices on AWS EKS, executing real-time tasks on MetaTrader 5 (MT5) with full GitOps automation, secrets management, observability, and zero manual deployments.
 
 ---
 
@@ -39,9 +39,9 @@
 
 ## 🎯 Executive Summary
 
-AlgoFleet Orchestrator is a **fully automated, cloud-native algorithmic trading platform** built to demonstrate production-level DevOps engineering. It runs **independent trading strategy pods** as Kubernetes pods on AWS EKS. Each bot implements a different trading strategy (various proprietary trading strategies) across multiple financial instruments (various financial instruments).
+AlgoFleet Orchestrator is a **fully automated, cloud-native Distributed Task System** built to demonstrate production-level DevOps engineering. It runs **independent task processing pods** as Kubernetes pods on AWS EKS. Each bot implements a different task processing algorithm (various proprietary algorithms) across multiple financial instruments (various financial instruments).
 
-Every bot connects to a **MetaTrader 5 bridge API** to place real trades, reads market signals using Python algorithms, records every trade in an internal **PostgreSQL database**, and is monitored via a **Grafana/Prometheus observability stack**.
+Every bot connects to a **MetaTrader 5 bridge API** to execute real-world actions, reads market signals using Python algorithms, records every action in an internal **PostgreSQL database**, and is monitored via a **Grafana/Prometheus observability stack**.
 
 The entire platform is managed using **GitOps principles** — the Git repository is the single source of truth. Push to `main` → GitHub Actions generates deployment manifests → ArgoCD syncs them to the cluster. No manual `kubectl apply` ever needed in production.
 
