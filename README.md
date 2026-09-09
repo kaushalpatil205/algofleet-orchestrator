@@ -28,4 +28,3 @@ Both architectures share the same proprietary Python task processors (via Git Su
 * `variants/variants.json` — The master configuration file. When this file is edited, GitHub Actions utilizes path-based triggers to dynamically update **both** the Kubernetes YAMLs and the ECS Task Definitions simultaneously!
 
 ---
-*Created to demonstrate advanced Cloud Infrastructure and DevOps Engineering skills.*

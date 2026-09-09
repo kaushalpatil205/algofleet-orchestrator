@@ -762,7 +762,7 @@ echo "All resources destroyed. No more charges."
 
 ## 📚 Further Reading
 
-- [docs/troubleshooting.md](docs/troubleshooting.md) — Complete guide to all issues encountered and how they were resolved
+- [../troubleshooting/version-1.md](../troubleshooting/version-1.md) — Complete guide to all issues encountered and how they were resolved
 - [AWS EKS Documentation](https://docs.aws.amazon.com/eks/)
 - [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
 - [External Secrets Operator](https://external-secrets.io/)
