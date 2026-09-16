@@ -1,5 +1,5 @@
 provider "aws" {
-  region = "ap-south-1"
+  region = var.aws_region
 }
 
 # 1. VPC Configuration (Public Subnets Only, No NAT Gateway for Sub-$40 Cost)
@@ -10,7 +10,7 @@ module "vpc" {
   name = "algofleet-ecs-vpc"
   cidr = "10.0.0.0/16"
 
-  azs            = ["ap-south-1a", "ap-south-1b"]
+  azs            = ["${var.aws_region}a", "${var.aws_region}b"]
   public_subnets = ["10.0.101.0/24", "10.0.102.0/24"]
 
   enable_nat_gateway = false
@@ -30,12 +30,12 @@ module "ecs" {
   fargate_capacity_providers = {
     FARGATE = {
       default_capacity_provider_strategy = {
-        weight = 0
+        weight = 100
       }
     }
     FARGATE_SPOT = {
       default_capacity_provider_strategy = {
-        weight = 100
+        weight = 0
       }
     }
   }
@@ -72,7 +72,10 @@ resource "aws_iam_role_policy" "ecs_secrets_policy" {
         Action = [
           "secretsmanager:GetSecretValue"
         ]
-        Resource = [aws_secretsmanager_secret.engine_config.arn]
+        Resource = [
+          aws_secretsmanager_secret.engine_config.arn,
+          "${aws_secretsmanager_secret.engine_config.arn}*"
+        ]
       }
     ]
   })
@@ -111,17 +114,19 @@ resource "aws_secretsmanager_secret" "engine_config" {
   name = "algofleet/engine-config"
 }
 
-# 6. EFS File System (For PostgreSQL Database Persistence)
+# 6. EFS File System (Optional: only if local PostgreSQL container is enabled)
 resource "aws_efs_file_system" "postgres_data" {
-  creation_token = "algofleet-postgres-data"
-  encrypted      = true
+  count            = var.enable_local_postgres ? 1 : 0
+  creation_token   = "algofleet-postgres-data"
+  encrypted        = true
   performance_mode = "generalPurpose"
   throughput_mode  = "bursting"
 }
 
 resource "aws_security_group" "efs_sg" {
-  name        = "algofleet-efs-sg"
-  vpc_id      = module.vpc.vpc_id
+  count  = var.enable_local_postgres ? 1 : 0
+  name   = "algofleet-efs-sg"
+  vpc_id = module.vpc.vpc_id
   ingress {
     from_port   = 2049
     to_port     = 2049
@@ -131,17 +136,17 @@ resource "aws_security_group" "efs_sg" {
 }
 
 resource "aws_efs_mount_target" "postgres_mount" {
-  count           = length(module.vpc.public_subnets)
-  file_system_id  = aws_efs_file_system.postgres_data.id
+  count           = var.enable_local_postgres ? length(module.vpc.public_subnets) : 0
+  file_system_id  = one(aws_efs_file_system.postgres_data[*].id)
   subnet_id       = module.vpc.public_subnets[count.index]
-  security_groups = [aws_security_group.efs_sg.id]
+  security_groups = [one(aws_security_group.efs_sg[*].id)]
 }
 
 # 7. GitHub Actions OIDC
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+  url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
 }
