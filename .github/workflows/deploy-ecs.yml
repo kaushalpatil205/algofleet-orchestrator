@@ -7,6 +7,7 @@ on:
     paths:
       - 'serverless-ecs-architecture/**'
       - 'variants/**'
+      - 'docker/**'
 
 permissions:
   id-token: write
@@ -19,33 +20,84 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      - name: Checkout Strategy Engine (if private access configured)
+        uses: actions/checkout@v3
+        continue-on-error: true
+        with:
+          repository: kaushalpatil205/strategy-engine
+          token: ${{ secrets.STRATEGY_ENGINE_TOKEN || secrets.GITHUB_TOKEN }}
+          path: strategy-engine
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
           role-to-assume: arn:aws:iam::561789488706:role/algofleet-github-actions-v2
-          aws-region: ap-south-1
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Strategy Engine to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: strategy-engine
+          IMAGE_TAG: latest
+        run: |
+          if [ -d "strategy-engine" ]; then
+            # Ensure Dockerfile path compatibility whether context is repo root or parent workspace
+            mkdir -p algofleet-orchestrator
+            ln -sf ../docker algofleet-orchestrator/docker
+
+            echo "Building Docker image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+            docker build -t "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -f docker/strategy-engine/Dockerfile .
+            echo "Pushing Docker image to ECR..."
+            docker push "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          else
+            echo "::warning::strategy-engine directory not found. Skipping Docker build. (Ensure STRATEGY_ENGINE_TOKEN is configured in GitHub secrets)"
+          fi
 
       - name: Generate ECS Task Definitions
+        env:
+          AWS_REGION: us-east-1
+          AWS_ACCOUNT_ID: '561789488706'
         run: |
-          python serverless-ecs-architecture/scripts/gen_ecs_tasks.py
+          python3 serverless-ecs-architecture/scripts/gen_ecs_tasks.py
 
       - name: Register and Update ECS Services
+        env:
+          AWS_REGION: us-east-1
         run: |
-          for task_file in serverless-ecs-architecture/ecs_tasks/*.json; do
+          shopt -s nullglob
+          task_files=(serverless-ecs-architecture/ecs_tasks/*.json)
+          if [ ${#task_files[@]} -eq 0 ]; then
+            echo "No ECS task definitions found in serverless-ecs-architecture/ecs_tasks/"
+            exit 1
+          fi
+
+          for task_file in "${task_files[@]}"; do
             # 1. Register the new Task Definition
             echo "Registering $task_file..."
-            NEW_REVISION=$(aws ecs register-task-definition --cli-input-json file://$task_file --query 'taskDefinition.taskDefinitionArn' --output text)
+            NEW_REVISION=$(aws ecs register-task-definition --region "$AWS_REGION" --cli-input-json file://"$task_file" --query 'taskDefinition.taskDefinitionArn' --output text)
             
+            if [ -z "$NEW_REVISION" ] || [ "$NEW_REVISION" = "None" ]; then
+              echo "Error: Failed to register task definition for $task_file" >&2
+              exit 1
+            fi
+
             # Extract family name from the file name
-            FAMILY=$(basename $task_file -task.json)
+            FAMILY=$(basename "$task_file" -task.json)
             
             # 2. Update the ECS Service to use the new revision
-            # Note: For strict singletons (trading bots), we ensure desired-count is 1
+            # Note: For strict singletons (live trading bots), standard on-demand FARGATE is required
+            # to prevent involuntary Spot terminations during open trade lifecycles.
             echo "Updating service algofleet-strategy-$FAMILY to use $NEW_REVISION"
             aws ecs update-service \
+              --region "$AWS_REGION" \
               --cluster algofleet-cluster \
               --service "algofleet-strategy-$FAMILY" \
-              --task-definition $NEW_REVISION \
+              --task-definition "$NEW_REVISION" \
               --desired-count 1 \
-              --capacity-provider-strategy capacityProvider=FARGATE_SPOT,weight=100
+              --capacity-provider-strategy capacityProvider=FARGATE,weight=100 \
+              --force-new-deployment
           done
