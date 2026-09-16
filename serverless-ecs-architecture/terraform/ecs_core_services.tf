@@ -3,7 +3,7 @@ resource "aws_security_group" "ecs_tasks_sg" {
   name        = "algofleet-ecs-tasks-sg"
   vpc_id      = module.vpc.vpc_id
 
-  # Allow postgres traffic from within the VPC
+  # Allow postgres traffic from within the VPC (if local DB is enabled)
   ingress {
     from_port   = 5432
     to_port     = 5432
@@ -11,7 +11,7 @@ resource "aws_security_group" "ecs_tasks_sg" {
     cidr_blocks = [module.vpc.vpc_cidr_block]
   }
 
-  # Allow all outbound traffic
+  # Allow all outbound traffic (CockroachDB Cloud on port 26257, MT5 Bridge on port 443, etc.)
   egress {
     from_port   = 0
     to_port     = 0
@@ -26,8 +26,13 @@ resource "aws_cloudwatch_log_group" "ecs_logs" {
   retention_in_days = 7
 }
 
-# PostgreSQL Task Definition
+# PostgreSQL Task Definition (Optional / Local development only)
+# NOTE: Trading bots and Dashboard connect directly to CockroachDB Serverless via Secrets Manager
+# or the TRADE_DB_URL environment variable to ensure synchronized trade history with MT5 Bridge.
+# Local PostgreSQL is disabled by default (var.enable_local_postgres = false) to prevent DNS resolution failures
+# on unresolvable 'postgres.algofleet.local'.
 resource "aws_ecs_task_definition" "postgres" {
+  count                    = var.enable_local_postgres ? 1 : 0
   family                   = "algofleet-postgres"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -39,8 +44,8 @@ resource "aws_ecs_task_definition" "postgres" {
   volume {
     name = "postgres-storage"
     efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.postgres_data.id
-      transit_encryption      = "ENABLED"
+      file_system_id     = one(aws_efs_file_system.postgres_data[*].id)
+      transit_encryption = "ENABLED"
     }
   }
 
@@ -73,7 +78,7 @@ resource "aws_ecs_task_definition" "postgres" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
-          "awslogs-region"        = "ap-south-1"
+          "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "postgres"
         }
       }
@@ -81,11 +86,12 @@ resource "aws_ecs_task_definition" "postgres" {
   ])
 }
 
-# PostgreSQL ECS Service
+# PostgreSQL ECS Service (Optional / Local development only)
 resource "aws_ecs_service" "postgres" {
+  count           = var.enable_local_postgres ? 1 : 0
   name            = "algofleet-postgres"
   cluster         = module.ecs.cluster_id
-  task_definition = aws_ecs_task_definition.postgres.arn
+  task_definition = one(aws_ecs_task_definition.postgres[*].arn)
   desired_count   = 1
   launch_type     = "FARGATE"
 
@@ -94,12 +100,9 @@ resource "aws_ecs_service" "postgres" {
     security_groups  = [aws_security_group.ecs_tasks_sg.id]
     assign_public_ip = true
   }
-
-  # For internal DNS service discovery
-  # (In a real setup we would add AWS Cloud Map namespace here so bots can resolve 'postgres.algofleet.local')
 }
 
-# Dashboard Task Definition (with Cloudflare Tunnel Sidecar)
+# Dashboard Task Definition (with Cloudflare Tunnel Sidecar & CockroachDB support)
 resource "aws_ecs_task_definition" "dashboard" {
   family                   = "algofleet-dashboard"
   network_mode             = "awsvpc"
@@ -116,6 +119,18 @@ resource "aws_ecs_task_definition" "dashboard" {
       cpu       = 256
       memory    = 512
       essential = true
+      environment = [
+        {
+          name  = "TRADE_DB_URL"
+          value = var.trade_db_url
+        }
+      ]
+      secrets = [
+        {
+          name      = "ENGINE_CONFIG_JSON"
+          valueFrom = aws_secretsmanager_secret.engine_config.arn
+        }
+      ]
       portMappings = [
         {
           containerPort = 8000
@@ -126,7 +141,7 @@ resource "aws_ecs_task_definition" "dashboard" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
-          "awslogs-region"        = "ap-south-1"
+          "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "dashboard"
         }
       }
@@ -142,7 +157,7 @@ resource "aws_ecs_task_definition" "dashboard" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
-          "awslogs-region"        = "ap-south-1"
+          "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "cloudflared"
         }
       }

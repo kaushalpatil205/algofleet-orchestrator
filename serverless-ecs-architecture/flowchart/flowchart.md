@@ -71,7 +71,7 @@ Fargate containers are stateless. To run a database without paying for AWS RDS, 
 
 ```mermaid
 flowchart LR
-    subgraph AWS["AWS VPC (ap-south-1)"]
+    subgraph AWS["AWS VPC (us-east-1)"]
         direction TB
         
         SM["🔐 Secrets Manager
@@ -81,7 +81,7 @@ flowchart LR
         
         subgraph ECS["ECS Fargate Cluster"]
             BOTS["🤖 Strategy Bots
-(Fargate Spot)"]
+(Fargate)"]
             PG["🗃️ PostgreSQL Container"]
         end
     end

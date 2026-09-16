@@ -1,11 +1,16 @@
 output "cluster_name" {
-  description = "The name of the EKS cluster"
-  value       = module.eks.cluster_name
+  description = "The name of the ECS cluster"
+  value       = module.ecs.cluster_name
 }
 
-output "cluster_endpoint" {
-  description = "Endpoint for the EKS control plane"
-  value       = module.eks.cluster_endpoint
+output "cluster_id" {
+  description = "The ID of the ECS cluster"
+  value       = module.ecs.cluster_id
+}
+
+output "cluster_arn" {
+  description = "The ARN of the ECS cluster"
+  value       = module.ecs.cluster_arn
 }
 
 output "strategy_engine_ecr_url" {
