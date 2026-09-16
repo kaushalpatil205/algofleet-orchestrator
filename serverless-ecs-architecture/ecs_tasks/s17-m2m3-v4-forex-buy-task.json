@@ -1,0 +1,44 @@
+{
+  "family": "algofleet-strategy-s17-m2m3-v4-forex-buy",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::561789488706:role/algofleet-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::561789488706:role/algofleet-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "strategy-bot",
+      "image": "561789488706.dkr.ecr.us-east-1.amazonaws.com/strategy-engine:latest",
+      "cpu": 256,
+      "memory": 512,
+      "essential": true,
+      "environment": [
+        {
+          "name": "STRATEGY_SCRIPT",
+          "value": "Live/Strategy 17/s17_m2m3_v4_forex_buy.py"
+        },
+        {
+          "name": "TRADE_DB_URL",
+          "value": "postgresql://floyd:4NOc9B_RfdRuvNiCoU3A4w@mt5-strategy-engine-30775.j77.aws-ap-south-1.cockroachlabs.cloud:26257/defaultdb?sslmode=require"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "ENGINE_CONFIG_JSON",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:561789488706:secret:algofleet/engine-config"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/algofleet",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "bot-s17-m2m3-v4-forex-buy"
+        }
+      }
+    }
+  ]
+}
